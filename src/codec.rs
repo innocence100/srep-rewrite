@@ -1402,7 +1402,8 @@ mod tests {
         let context = ResourceContext::with_resources(&resources).unwrap();
         let mut spool = TempSpool::new(&resources, &context).unwrap();
         let before = context.temp.current();
-        spool.file = File::open("/dev/null").unwrap();
+        let read_only = tempfile::NamedTempFile::new().unwrap();
+        spool.file = File::open(read_only.path()).unwrap();
         assert!(spool.append(b"fail").is_err());
         assert_eq!(context.temp.current(), before);
         assert_eq!(spool.len, 0);

@@ -180,7 +180,7 @@ fn all_same_key_sources_are_examined_without_a_chain_cap() {
 fn one_target_query_returns_exactly_64_sources_in_index_order() {
     let minimum = 7usize;
     let seed = m5_seed_size(minimum as u64).unwrap() as usize;
-    let source_bytes = [b'a', b'b', b'c', b'd'];
+    let source_bytes = *b"abcd";
     let mut input = source_bytes.repeat(64);
     input.extend_from_slice(b"abcZ");
     let target = input.len();
