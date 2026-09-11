@@ -116,7 +116,7 @@ fn windows_native_stem_default_path_round_trips_or_preserves_helper_result() {
     let data = b"windows native path".repeat(20);
     let write_result = fs::write(&input, &data);
     if write_result.is_ok() {
-        let binary = std::env::var_os("CARGO_BIN_EXE_srep").unwrap();
+        let binary = std::path::PathBuf::from(env!("CARGO_BIN_EXE_srep"));
         assert!(
             Command::new(&binary)
                 .args([OsString::from("compress"), input.clone().into_os_string()])

@@ -294,7 +294,7 @@ impl ExactLce {
                 result = result.min(self.tree[left]);
                 left += 1;
             }
-            if right % 2 == 0 {
+            if right.is_multiple_of(2) {
                 result = result.min(self.tree[right]);
                 right -= 1;
             }

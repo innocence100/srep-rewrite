@@ -793,10 +793,10 @@ fn ensure_unique_units(units: &[Unit]) -> Result<(), Box<dyn std::error::Error>>
             return Err("identical same-heading same-kind requirement".into());
         }
         let id_prefix = hex(Sha256::digest(&payload))[..16].to_owned();
-        if let Some(previous) = prefixes.insert(id_prefix, payload.clone()) {
-            if previous == payload {
-                return Err("duplicate requirement payload".into());
-            }
+        if let Some(previous) = prefixes.insert(id_prefix, payload.clone())
+            && previous == payload
+        {
+            return Err("duplicate requirement payload".into());
         }
     }
     Ok(())

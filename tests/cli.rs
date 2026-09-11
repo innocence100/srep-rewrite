@@ -242,7 +242,22 @@ fn non_utf8_paths_round_trip_with_native_default_names() {
     let input_name = OsString::from_vec(b"nonutf8-\xff.bin".to_vec());
     let input = dir.join(&input_name);
     let data = b"native path bytes".repeat(40);
-    fs::write(&input, &data).unwrap();
+    if let Err(error) = fs::write(&input, &data) {
+        #[cfg(target_os = "macos")]
+        {
+            // Darwin returns EILSEQ (92) for malformed byte sequences in paths.
+            const DARWIN_EILSEQ: i32 = 92;
+            assert_eq!(
+                error.raw_os_error(),
+                Some(DARWIN_EILSEQ),
+                "unexpected failure creating the non-UTF-8 path: {error}"
+            );
+            fs::remove_dir_all(dir).unwrap();
+            return;
+        }
+        #[cfg(not(target_os = "macos"))]
+        panic!("non-UTF-8 path creation failed outside the documented macOS case: {error}");
+    }
     assert!(
         Command::new(bin())
             .current_dir(&dir)
@@ -295,6 +310,62 @@ fn non_utf8_paths_round_trip_with_native_default_names() {
             .success()
     );
     assert_eq!(fs::read(absolute_restored).unwrap(), data);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn native_unicode_default_and_explicit_paths_round_trip() {
+    let dir = temp_dir();
+    let data = b"native Unicode path bytes".repeat(40);
+
+    let default_input = dir.join("native-日本語.bin");
+    fs::write(&default_input, &data).unwrap();
+    assert!(
+        Command::new(bin())
+            .args(["compress", default_input.to_str().unwrap()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let default_archive = dir.join("native-日本語.bin.srep");
+    assert!(default_archive.exists());
+    assert!(
+        Command::new(bin())
+            .args(["decompress", "--force", default_archive.to_str().unwrap()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert_eq!(fs::read(&default_input).unwrap(), data);
+
+    let explicit_input = dir.join("explicit-☃.bin");
+    let explicit_archive = dir.join("explicit-☃.archive");
+    let explicit_restored = dir.join("explicit-☃.restored");
+    fs::write(&explicit_input, &data).unwrap();
+    assert!(
+        Command::new(bin())
+            .args([
+                "compress",
+                explicit_input.to_str().unwrap(),
+                explicit_archive.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new(bin())
+            .args([
+                "decompress",
+                explicit_archive.to_str().unwrap(),
+                explicit_restored.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert_eq!(fs::read(explicit_restored).unwrap(), data);
     fs::remove_dir_all(dir).unwrap();
 }
 

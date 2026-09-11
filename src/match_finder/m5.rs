@@ -239,10 +239,10 @@ fn hash_with_snapshot<F>(
 where
     F: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
 {
-    if let Some(snapshot) = snapshot {
-        if let Some(hash) = snapshot.polynomial_hash_at(position, length) {
-            return Ok(hash);
-        }
+    if let Some(snapshot) = snapshot
+        && let Some(hash) = snapshot.polynomial_hash_at(position, length)
+    {
+        return Ok(hash);
     }
     hash_fn(source, position, length)
 }
@@ -257,10 +257,10 @@ fn packed_slice_metadata_with_snapshot<S>(
 where
     S: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
 {
-    if let Some(snapshot) = snapshot {
-        if let Some(metadata) = snapshot.packed_slice_metadata_at(position, length) {
-            return Ok(metadata);
-        }
+    if let Some(snapshot) = snapshot
+        && let Some(metadata) = snapshot.packed_slice_metadata_at(position, length)
+    {
+        return Ok(metadata);
     }
     let quotient = length / 8;
     let remainder = length % 8;
@@ -293,10 +293,10 @@ fn compare_with_snapshot<C>(
 where
     C: FnMut(&mut dyn DataSource, u64, u64, u64) -> Result<bool>,
 {
-    if let Some(snapshot) = snapshot {
-        if let Some(equal) = snapshot.compare_contiguous(first, second, length) {
-            return Ok(equal);
-        }
+    if let Some(snapshot) = snapshot
+        && let Some(equal) = snapshot.compare_contiguous(first, second, length)
+    {
+        return Ok(equal);
     }
     compare_fn(source, first, second, length)
 }
