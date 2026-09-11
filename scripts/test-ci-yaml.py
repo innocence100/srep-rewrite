@@ -130,6 +130,38 @@ def locked_commands(job: dict[str, Any]) -> list[str]:
     return commands
 
 
+def is_debug_cargo_test(run: str) -> bool:
+    return run.startswith("cargo test") and "--release" not in run.split()
+
+
+def rust_test_threads(step: dict[str, Any]) -> str | None:
+    env = step.get("env") or {}
+    if not isinstance(env, dict) or "RUST_TEST_THREADS" not in env:
+        return None
+    return str(env["RUST_TEST_THREADS"])
+
+
+def debug_cargo_test_steps(job: dict[str, Any]) -> list[dict[str, Any]]:
+    steps = []
+    for step in _as_list(job.get("steps")):
+        if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+            continue
+        if is_debug_cargo_test(step["run"]):
+            steps.append(step)
+    return steps
+
+
+def assert_serialized_debug_tests(job: dict[str, Any], name: str) -> None:
+    steps = debug_cargo_test_steps(job)
+    assert steps, f"{name} must run debug cargo test"
+    missing = [
+        step["run"]
+        for step in steps
+        if rust_test_threads(step) != "1"
+    ]
+    assert not missing, f"{name} debug cargo test must set RUST_TEST_THREADS=1: {missing}"
+
+
 def assert_native_matrix(doc: dict[str, Any], msrv: str) -> None:
     jobs = doc.get("jobs") or {}
     assert NATIVE_JOB in jobs, f"missing {NATIVE_JOB} job"
@@ -168,6 +200,15 @@ def assert_native_matrix(doc: dict[str, Any], msrv: str) -> None:
     assert toolchain_from_steps(native) == "${{ matrix.rust }}", (
         "native matrix rust-toolchain must consume matrix.rust"
     )
+    assert_serialized_debug_tests(native, "native-matrix")
+    for step in _as_list(native.get("steps")):
+        if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+            continue
+        run = step["run"]
+        if run.startswith("cargo check") or "cargo build --locked --release" in run:
+            assert rust_test_threads(step) is None, (
+                "native-matrix check/release must not inherit test-thread serialization"
+            )
 
 
 def assert_platform_coverage(doc: dict[str, Any], msrv: str) -> None:
@@ -179,6 +220,19 @@ def assert_platform_coverage(doc: dict[str, Any], msrv: str) -> None:
     extra_stable_windows = (OS_WINDOWS, STABLE) in expand_native_matrix(doc["jobs"][NATIVE_JOB])
     assert not extra_stable_linux, "do not duplicate the Linux stable full suite"
     assert not extra_stable_windows, "do not duplicate the Windows stable full suite"
+    windows = doc["jobs"][WINDOWS_JOB]
+    assert_serialized_debug_tests(windows, "windows-test")
+    verify = doc["jobs"][VERIFY_JOB]
+    verify_debug = debug_cargo_test_steps(verify)
+    assert verify_debug, "verify must keep its debug cargo test"
+    assert all(rust_test_threads(step) is None for step in verify_debug), (
+        "do not serialize Linux verify debug cargo test"
+    )
+    for step in _as_list(verify.get("steps")):
+        if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+            continue
+        if "--release" in step["run"].split() and step["run"].startswith("cargo test"):
+            assert rust_test_threads(step) is None, "do not serialize the verify release test gate"
 
 
 def assert_required_gates(text: str) -> None:
@@ -253,6 +307,32 @@ def mutate_drop_windows_msrv(doc: dict[str, Any]) -> dict[str, Any]:
     return mutated
 
 
+def mutate_drop_native_test_threads(doc: dict[str, Any]) -> dict[str, Any]:
+    mutated = copy.deepcopy(doc)
+    for step in debug_cargo_test_steps(mutated["jobs"][NATIVE_JOB]):
+        env = step.get("env")
+        if isinstance(env, dict):
+            env.pop("RUST_TEST_THREADS", None)
+    return mutated
+
+
+def mutate_drop_windows_test_threads(doc: dict[str, Any]) -> dict[str, Any]:
+    mutated = copy.deepcopy(doc)
+    for step in debug_cargo_test_steps(mutated["jobs"][WINDOWS_JOB]):
+        env = step.get("env")
+        if isinstance(env, dict):
+            env.pop("RUST_TEST_THREADS", None)
+    return mutated
+
+
+def mutate_serialize_verify_debug_tests(doc: dict[str, Any]) -> dict[str, Any]:
+    mutated = copy.deepcopy(doc)
+    for step in debug_cargo_test_steps(mutated["jobs"][VERIFY_JOB]):
+        env = step.setdefault("env", {})
+        env["RUST_TEST_THREADS"] = "1"
+    return mutated
+
+
 def mutate_hardcode_stable_toolchain(doc: dict[str, Any]) -> dict[str, Any]:
     mutated = copy.deepcopy(doc)
     for step in _as_list(mutated["jobs"][NATIVE_JOB].get("steps")):
@@ -282,6 +362,9 @@ def self_check(doc: dict[str, Any], msrv: str) -> None:
     expect_failure(mutate_msrv_drift(doc, "1.85.0"), "exact MSRV")
     expect_failure(mutate_drop_windows_msrv(doc), "Windows MSRV")
     expect_failure(mutate_hardcode_stable_toolchain(doc), "matrix.rust")
+    expect_failure(mutate_drop_native_test_threads(doc), "RUST_TEST_THREADS=1")
+    expect_failure(mutate_drop_windows_test_threads(doc), "RUST_TEST_THREADS=1")
+    expect_failure(mutate_serialize_verify_debug_tests(doc), "do not serialize Linux verify")
 
 
 def main() -> int:
