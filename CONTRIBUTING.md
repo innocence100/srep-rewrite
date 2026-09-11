@@ -11,6 +11,23 @@ with a deterministic RAM-or-spill CandidateIndex and budgeted temporary runs. m3
 includes the optional m0 REP overlay.
 Prototype NG v1 remains rejected.
 
+The declared MSRV is exactly **1.88.0** (raised from 1.85 because this
+tree uses `if let` chains, which stabilized in 1.88). On Linux, install
+and exercise that toolchain with:
+
+```sh
+rustup toolchain install 1.88.0
+cargo +1.88.0 check --locked --all-targets --all-features
+cargo +1.88.0 build --locked --release
+cargo +1.88.0 test --locked --all-targets --all-features
+```
+
+Native Windows and macOS compile, link, and test evidence must come from
+GitHub Actions (`windows-latest` / `macos-latest`). Local Linux
+`--target x86_64-pc-windows-*` checks are compile-only hints, not
+Windows verification. macOS cross-compilation from Linux is not
+supported here; use native `macos-latest` Actions only.
+
 Add a regression test before fixing behavior. Run formatting, clippy with
 warnings denied, all tests, and a release build before submitting changes:
 
@@ -27,7 +44,10 @@ sh scripts/release-smoke.sh
 ```
 
 The CI workflow repeats these Linux gates and also runs Windows formatting,
-checks, clippy, tests, and a release build.
+checks, clippy, tests, and a release build. A native matrix covers Linux,
+Windows, and macOS at 1.88.0 and stable (Linux/Windows stable full suites
+stay on the dedicated jobs). Configure Actions credentials to obtain
+native Win/Mac evidence; this document does not claim those remote runs.
 
 Malformed-input changes must preserve structural-error precedence: fixed
 headers and exact declared lengths are validated before memory reservations.

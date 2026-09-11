@@ -24,7 +24,7 @@ fn unique() -> u128 {
 }
 
 fn bin() -> PathBuf {
-    PathBuf::from(std::env::var_os("CARGO_BIN_EXE_srep").unwrap())
+    PathBuf::from(env!("CARGO_BIN_EXE_srep"))
 }
 
 fn wait_for_temp_file(dir: &Path) -> PathBuf {

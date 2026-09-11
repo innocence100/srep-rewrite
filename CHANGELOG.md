@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Raised the crate MSRV from 1.85 to 1.88.0. The source uses `if let`
+  chains (`src/config.rs`, `src/reference.rs`), which stabilized in
+  Rust 1.88; locked dependency `rust-version` metadata remains at 1.85
+  and does not require a higher compiler.
 - Stage 8 disk spill is implemented: m0-m5 finder history uses deterministic
   budgeted RAM-or-spill CandidateIndex runs with canonical identity handling,
   bounded fan-in compaction, and transactional cleanup and retry behavior.

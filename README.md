@@ -146,6 +146,21 @@ and is not treated as finder-discovery evidence.
 
 ## Development
 
+The minimum supported Rust version is **1.88.0**. The crate uses `if let`
+chains, which stabilized in 1.88; 1.85 is no longer sufficient. Local
+Linux commands against that exact toolchain:
+
+```sh
+cargo +1.88.0 check --locked --all-targets --all-features
+cargo +1.88.0 build --locked --release
+cargo +1.88.0 test --locked --all-targets --all-features
+```
+
+Those commands are local Linux evidence only. Native Windows and macOS
+compile, link, and test results require GitHub Actions
+(`windows-latest` / `macos-latest`); a Linux `--target` cross-check is
+not a substitute.
+
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
@@ -197,4 +212,6 @@ operation outside this tool.
 Windows CI runs native tests and release builds on every Windows runner, plus
 GNU-target `cargo check` and Clippy. GNU-target tests and builds run only when
 the runner provides `mingw32-gcc`; otherwise the native Windows evidence and
-GNU check/Clippy evidence remain the supported Stage2 coverage.
+GNU check/Clippy evidence remain the supported Stage2 coverage. The workflow
+also configures native Linux/Windows/macOS jobs at MSRV 1.88.0 and stable;
+this tree does not treat local cross-compilation as that evidence.

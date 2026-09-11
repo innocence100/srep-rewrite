@@ -3,10 +3,12 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Prepare legacy test temporary root
@@ -17,10 +19,12 @@ jobs:
       - run: sh scripts/audit-lock-licenses.sh
       - run: sh scripts/test-license-audit.sh
       - run: python3 scripts/test-ci-yaml.py
+      - run: python3 scripts/test-fidelity-evaluator.py
       - run: sh -n scripts/regenerate-legacy-fixtures.sh
       - run: python3 -m compileall -q scripts
       - run: cargo fmt --all -- --check
       - run: cargo check --all-targets --all-features
+      - run: cargo run --bin requirement-audit -- --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo build --bin srep --example stage6-fixed-metrics
       - run: cargo build --bin srep --example stage7-m5-metrics
@@ -38,6 +42,7 @@ jobs:
 
   windows-test:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -63,3 +68,26 @@ jobs:
       - if: steps.mingw.outputs.available != 'true'
         shell: pwsh
         run: Write-Host "GNU linker unavailable; GNU check/Clippy and native Windows tests/build are the supported evidence."
+
+  native-matrix:
+    name: Native ${{ matrix.os }} Rust ${{ matrix.rust }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: ["1.88.0", stable]
+        exclude:
+          - os: ubuntu-latest
+            rust: stable
+          - os: windows-latest
+            rust: stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+      - run: cargo check --locked --all-targets --all-features
+      - run: cargo build --locked --release
+      - run: cargo test --locked --all-targets --all-features
