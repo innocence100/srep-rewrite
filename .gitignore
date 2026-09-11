@@ -1,0 +1,9 @@
+/target
+*.srep
+*.srep2
+!/tests/fixtures/legacy/*.srep
+!/tests/fixtures/fidelity/*.srep
+*.tmp
+scripts/__pycache__/
+.env
+.env.*

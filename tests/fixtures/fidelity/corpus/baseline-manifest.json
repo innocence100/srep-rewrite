@@ -1,0 +1,1955 @@
+{
+  "schema": "srep-fidelity-baseline-v1",
+  "corpus_manifest_sha256": "3f1595e498b11d6049bc6f5bc0d28199f85829bb5a52bbc553084f4973c98a83",
+  "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+  "old_binary": "/home/test/.opencode/archiving-tools/srep/bin/srep",
+  "xz_version": "xz (XZ Utils) 5.2.4",
+  "xz_argv": [
+    "xz",
+    "--format=raw",
+    "--threads=1",
+    "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+  ],
+  "old_argv_template": [
+    "OLD_BINARY",
+    "-v0",
+    "-b8k",
+    "-lMETHOD_MIN",
+    "-cMETHOD_CHUNK",
+    "-d0",
+    "METHOD",
+    "-hash=md5",
+    "INPUT",
+    "OUTPUT"
+  ],
+  "new_config": {
+    "layout": "index",
+    "checksum": "xxh3",
+    "block_size": 8192,
+    "m1_m2_min_match": 32,
+    "m1_m2_target_chunk": 4096,
+    "other_min_match": 512
+  },
+  "samples": [
+    {
+      "id": "fidelity-v1-01",
+      "methods": {
+        "m0": {
+          "old_covered": 196608,
+          "old_literals": 65536,
+          "old_matches": 24,
+          "old_preprocessor_size": 66984,
+          "old_final_size": 65926,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 196608,
+          "old_literals": 65536,
+          "old_matches": 63,
+          "old_preprocessor_size": 67608,
+          "old_final_size": 66018,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 196608,
+          "old_literals": 65536,
+          "old_matches": 63,
+          "old_preprocessor_size": 67608,
+          "old_final_size": 66015,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 196096,
+          "old_literals": 66048,
+          "old_matches": 24,
+          "old_preprocessor_size": 67496,
+          "old_final_size": 65939,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 196608,
+          "old_literals": 65536,
+          "old_matches": 24,
+          "old_preprocessor_size": 66984,
+          "old_final_size": 65926,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 196608,
+          "old_literals": 65536,
+          "old_matches": 24,
+          "old_preprocessor_size": 66984,
+          "old_final_size": 65926,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-02",
+      "methods": {
+        "m0": {
+          "old_covered": 458579,
+          "old_literals": 65709,
+          "old_matches": 56,
+          "old_preprocessor_size": 68693,
+          "old_final_size": 66138,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 453235,
+          "old_literals": 71053,
+          "old_matches": 167,
+          "old_preprocessor_size": 75813,
+          "old_final_size": 66270,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 457784,
+          "old_literals": 66504,
+          "old_matches": 167,
+          "old_preprocessor_size": 71264,
+          "old_final_size": 66246,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 458240,
+          "old_literals": 66048,
+          "old_matches": 56,
+          "old_preprocessor_size": 69032,
+          "old_final_size": 66142,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 458579,
+          "old_literals": 65709,
+          "old_matches": 56,
+          "old_preprocessor_size": 68693,
+          "old_final_size": 66138,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 458579,
+          "old_literals": 65709,
+          "old_matches": 56,
+          "old_preprocessor_size": 68693,
+          "old_final_size": 66138,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-03",
+      "methods": {
+        "m0": {
+          "old_covered": 489855,
+          "old_literals": 34433,
+          "old_matches": 80,
+          "old_preprocessor_size": 37801,
+          "old_final_size": 34880,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 442623,
+          "old_literals": 81665,
+          "old_matches": 189,
+          "old_preprocessor_size": 86777,
+          "old_final_size": 35127,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 444670,
+          "old_literals": 79618,
+          "old_matches": 176,
+          "old_preprocessor_size": 84522,
+          "old_final_size": 35133,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 486400,
+          "old_literals": 37888,
+          "old_matches": 76,
+          "old_preprocessor_size": 41192,
+          "old_final_size": 34930,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 489352,
+          "old_literals": 34936,
+          "old_matches": 79,
+          "old_preprocessor_size": 38288,
+          "old_final_size": 34894,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 489918,
+          "old_literals": 34370,
+          "old_matches": 80,
+          "old_preprocessor_size": 37738,
+          "old_final_size": 34877,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-04",
+      "methods": {
+        "m0": {
+          "old_covered": 520255,
+          "old_literals": 4033,
+          "old_matches": 127,
+          "old_preprocessor_size": 8153,
+          "old_final_size": 232,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 491520,
+          "old_literals": 32768,
+          "old_matches": 60,
+          "old_preprocessor_size": 35816,
+          "old_final_size": 273,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 491520,
+          "old_literals": 32768,
+          "old_matches": 60,
+          "old_preprocessor_size": 35816,
+          "old_final_size": 273,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 521728,
+          "old_literals": 2560,
+          "old_matches": 124,
+          "old_preprocessor_size": 6632,
+          "old_final_size": 252,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 524244,
+          "old_literals": 44,
+          "old_matches": 184,
+          "old_preprocessor_size": 5076,
+          "old_final_size": 272,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 523584,
+          "old_literals": 704,
+          "old_matches": 64,
+          "old_preprocessor_size": 3816,
+          "old_final_size": 204,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-05",
+      "methods": {
+        "m0": {
+          "old_covered": 262144,
+          "old_literals": 1835008,
+          "old_matches": 32,
+          "old_preprocessor_size": 1843752,
+          "old_final_size": 1841816,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 262140,
+          "old_literals": 1835012,
+          "old_matches": 81,
+          "old_preprocessor_size": 1844540,
+          "old_final_size": 1842100,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 262144,
+          "old_literals": 1835008,
+          "old_matches": 103,
+          "old_preprocessor_size": 1844888,
+          "old_final_size": 1842154,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 261632,
+          "old_literals": 1835520,
+          "old_matches": 32,
+          "old_preprocessor_size": 1844264,
+          "old_final_size": 1841827,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 262144,
+          "old_literals": 1835008,
+          "old_matches": 32,
+          "old_preprocessor_size": 1843752,
+          "old_final_size": 1841816,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 262144,
+          "old_literals": 1835008,
+          "old_matches": 32,
+          "old_preprocessor_size": 1843752,
+          "old_final_size": 1841816,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-06",
+      "methods": {
+        "m0": {
+          "old_covered": 510964,
+          "old_literals": 13324,
+          "old_matches": 229,
+          "old_preprocessor_size": 19076,
+          "old_final_size": 10771,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 37016,
+          "old_literals": 487272,
+          "old_matches": 102,
+          "old_preprocessor_size": 490992,
+          "old_final_size": 10580,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 0,
+          "old_literals": 524288,
+          "old_matches": 0,
+          "old_preprocessor_size": 526376,
+          "old_final_size": 10239,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 464896,
+          "old_literals": 59392,
+          "old_matches": 184,
+          "old_preprocessor_size": 64424,
+          "old_final_size": 10716,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 510910,
+          "old_literals": 13378,
+          "old_matches": 235,
+          "old_preprocessor_size": 19226,
+          "old_final_size": 10589,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 511421,
+          "old_literals": 12867,
+          "old_matches": 254,
+          "old_preprocessor_size": 19019,
+          "old_final_size": 10690,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-07",
+      "methods": {
+        "m0": {
+          "old_covered": 523904,
+          "old_literals": 384,
+          "old_matches": 124,
+          "old_preprocessor_size": 4456,
+          "old_final_size": 229,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 483328,
+          "old_literals": 40960,
+          "old_matches": 59,
+          "old_preprocessor_size": 43992,
+          "old_final_size": 287,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 500170,
+          "old_literals": 24118,
+          "old_matches": 183,
+          "old_preprocessor_size": 29134,
+          "old_final_size": 349,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 521728,
+          "old_literals": 2560,
+          "old_matches": 127,
+          "old_preprocessor_size": 6680,
+          "old_final_size": 238,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 524159,
+          "old_literals": 129,
+          "old_matches": 127,
+          "old_preprocessor_size": 4249,
+          "old_final_size": 241,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 524156,
+          "old_literals": 132,
+          "old_matches": 124,
+          "old_preprocessor_size": 4204,
+          "old_final_size": 226,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-08",
+      "methods": {
+        "m0": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 56,
+          "old_preprocessor_size": 68520,
+          "old_final_size": 65937,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 161,
+          "old_preprocessor_size": 70200,
+          "old_final_size": 66042,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 154,
+          "old_preprocessor_size": 70088,
+          "old_final_size": 66031,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 458240,
+          "old_literals": 66048,
+          "old_matches": 56,
+          "old_preprocessor_size": 69032,
+          "old_final_size": 65948,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 56,
+          "old_preprocessor_size": 68520,
+          "old_final_size": 65937,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 56,
+          "old_preprocessor_size": 68520,
+          "old_final_size": 65937,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-09",
+      "methods": {
+        "m0": {
+          "old_covered": 0,
+          "old_literals": 262144,
+          "old_matches": 0,
+          "old_preprocessor_size": 263208,
+          "old_final_size": 263224,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 0,
+          "old_literals": 262144,
+          "old_matches": 0,
+          "old_preprocessor_size": 263208,
+          "old_final_size": 263224,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 0,
+          "old_literals": 262144,
+          "old_matches": 0,
+          "old_preprocessor_size": 263208,
+          "old_final_size": 263224,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 0,
+          "old_literals": 262144,
+          "old_matches": 0,
+          "old_preprocessor_size": 263208,
+          "old_final_size": 263224,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 0,
+          "old_literals": 262144,
+          "old_matches": 0,
+          "old_preprocessor_size": 263208,
+          "old_final_size": 263224,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 0,
+          "old_literals": 262144,
+          "old_matches": 0,
+          "old_preprocessor_size": 263208,
+          "old_final_size": 263224,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-10",
+      "methods": {
+        "m0": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 56,
+          "old_preprocessor_size": 68520,
+          "old_final_size": 65936,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 196,
+          "old_preprocessor_size": 70760,
+          "old_final_size": 66059,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 217,
+          "old_preprocessor_size": 71096,
+          "old_final_size": 66064,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 458240,
+          "old_literals": 66048,
+          "old_matches": 56,
+          "old_preprocessor_size": 69032,
+          "old_final_size": 65948,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 56,
+          "old_preprocessor_size": 68520,
+          "old_final_size": 65936,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 458752,
+          "old_literals": 65536,
+          "old_matches": 56,
+          "old_preprocessor_size": 68520,
+          "old_final_size": 65936,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-11",
+      "methods": {
+        "m0": {
+          "old_covered": 458579,
+          "old_literals": 65709,
+          "old_matches": 56,
+          "old_preprocessor_size": 68693,
+          "old_final_size": 66137,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 456913,
+          "old_literals": 67375,
+          "old_matches": 187,
+          "old_preprocessor_size": 72455,
+          "old_final_size": 66270,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 456268,
+          "old_literals": 68020,
+          "old_matches": 160,
+          "old_preprocessor_size": 72668,
+          "old_final_size": 66251,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 458240,
+          "old_literals": 66048,
+          "old_matches": 56,
+          "old_preprocessor_size": 69032,
+          "old_final_size": 66142,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 458579,
+          "old_literals": 65709,
+          "old_matches": 56,
+          "old_preprocessor_size": 68693,
+          "old_final_size": 66137,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 458579,
+          "old_literals": 65709,
+          "old_matches": 56,
+          "old_preprocessor_size": 68693,
+          "old_final_size": 66137,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    },
+    {
+      "id": "fidelity-v1-12",
+      "methods": {
+        "m0": {
+          "old_covered": 773165,
+          "old_literals": 13267,
+          "old_matches": 288,
+          "old_preprocessor_size": 20987,
+          "old_final_size": 10801,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m0",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m1": {
+          "old_covered": 245760,
+          "old_literals": 540672,
+          "old_matches": 30,
+          "old_preprocessor_size": 544264,
+          "old_final_size": 10305,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m1",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m2": {
+          "old_covered": 285711,
+          "old_literals": 500721,
+          "old_matches": 115,
+          "old_preprocessor_size": 505673,
+          "old_final_size": 10569,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l32",
+            "-d0",
+            "-c4096",
+            "-m2",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m3": {
+          "old_covered": 726016,
+          "old_literals": 60416,
+          "old_matches": 248,
+          "old_preprocessor_size": 67496,
+          "old_final_size": 10810,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m3",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m4": {
+          "old_covered": 773053,
+          "old_literals": 13379,
+          "old_matches": 300,
+          "old_preprocessor_size": 21291,
+          "old_final_size": 10669,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-c512",
+            "-m4",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        },
+        "m5": {
+          "old_covered": 773564,
+          "old_literals": 12868,
+          "old_matches": 319,
+          "old_preprocessor_size": 21084,
+          "old_final_size": 10776,
+          "old_binary_sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+          "xz_version": "xz (XZ Utils) 5.2.4",
+          "xz_argv": [
+            "xz",
+            "--format=raw",
+            "--threads=1",
+            "--lzma2=dict=64MiB,lc=3,lp=0,pb=2,mode=normal,nice=273,mf=bt4"
+          ],
+          "old_command": [
+            "-v0",
+            "-b8k",
+            "-l512",
+            "-d0",
+            "-m5",
+            "-hash=md5",
+            "INPUT",
+            "OUTPUT"
+          ]
+        }
+      }
+    }
+  ]
+}

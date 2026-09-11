@@ -1,0 +1,37 @@
+[package]
+name = "srep"
+version = "0.1.0"
+edition = "2024"
+description = "SREP-NG v2 preprocessor with deterministic multi-method matching"
+license = "MIT"
+rust-version = "1.85"
+
+[lib]
+name = "srep"
+path = "src/lib.rs"
+
+[[bin]]
+name = "srep"
+path = "src/main.rs"
+
+[[bin]]
+name = "requirement-audit"
+path = "src/bin/requirement-audit.rs"
+
+[dev-dependencies]
+
+[dependencies]
+aes = { version = "0.8.4", default-features = false }
+blake3 = "1.8"
+getrandom = "0.4.3"
+md-5 = { version = "0.10.6", default-features = false }
+pulldown-cmark = { version = "=0.13.0", default-features = false }
+same-file = "1.0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha1 = { version = "0.10.6", default-features = false }
+sha2 = { version = "0.10.9", default-features = false }
+siphasher = { version = "1.0.1", default-features = false }
+tempfile = { version = "3.27.0", default-features = false, features = ["getrandom"] }
+twox-hash = { version = "=2.1.4", default-features = false, features = ["std", "xxhash3_128"] }
+unicode-normalization = "0.1.25"

@@ -1,0 +1,108 @@
+{
+  "schema": "stage6-fixed-v3",
+  "corpus": {
+    "file": "stage6-fixed.bin",
+    "sha256": "2c7daddc27d2838c229cc4983c2665a4ceda4d68b70fce52da524388c2932594",
+    "size": 240
+  },
+  "old_binary": {
+    "name": "SREP 3.93a beta",
+    "sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+    "read_only": true
+  },
+  "comparisons": [
+    {
+      "method": "m3",
+      "layout": "io-rounded",
+      "base_len": 16,
+      "seed_size": 16,
+      "minimum_match": 16,
+      "block_size": 8192,
+      "rep_overlay": false,
+      "old_command": ["srep", "-v0", "-b8k", "-l16", "-c16", "-d0", "-m3o", "-hash=md5", "INPUT", "OUTPUT"],
+      "new_command": ["srep", "compress", "--method", "m3", "--layout", "io", "--checksum", "xxh3", "--block-size", "8KiB", "--min-match", "16", "--seed-size", "16", "INPUT", "OUTPUT"],
+      "old_archive": {
+        "file": "stage6-old-m3.srep",
+        "sha256": "ed79494602ea5df5ec7463d92f2aeed9ab84802242998d2a84b4b06865f23b82",
+        "size": 104,
+        "version": 1,
+        "layout": "io-rounded",
+        "checksum": "md5",
+        "base_len": 16
+      },
+      "old_result": {
+        "match_count": 1,
+        "encoded_bytes": 12,
+        "covered_bytes": 192,
+        "literal_bytes": 48,
+        "archive_size": 104
+      },
+      "new_result": {
+        "raw_candidate_count": 65,
+        "normalized_match_count": 1,
+        "covered_bytes": 208,
+        "literal_bytes": 32,
+        "archive_size": 624,
+        "archive_sha256": "717614c4f1f736304b3b06a2cf0151c8517fa9aa31771b4797ee3bc0829a1cee"
+      },
+      "m4_witness": null,
+      "notes": "Comparable L=16/min=16/block=8KiB I/O vector. Old -m3o is legacy v1 rounded I/O; new m3 is NG I/O. New physical coverage preserves the old semantic envelope."
+    },
+    {
+      "method": "m4",
+      "layout": "io",
+      "base_len": 16,
+      "seed_size": 16,
+      "minimum_match": 16,
+      "block_size": 8192,
+      "rep_overlay": false,
+      "old_command": ["srep", "-v0", "-b8k", "-l16", "-c16", "-d0", "-m4o", "-hash=md5", "INPUT", "OUTPUT"],
+      "new_command": ["srep", "compress", "--method", "m4", "--layout", "io", "--checksum", "xxh3", "--block-size", "8KiB", "--min-match", "16", "--seed-size", "16", "INPUT", "OUTPUT"],
+      "old_archive": {
+        "file": "stage6-old-m4.srep",
+        "sha256": "cc3eadf82c3290965fe7a76a83be25ae45ab25a5276c17874b53eec0960ccd05",
+        "size": 84,
+        "version": 2,
+        "layout": "io",
+        "checksum": "md5",
+        "base_len": 16
+      },
+      "old_result": {
+        "match_count": 1,
+        "encoded_bytes": 16,
+        "covered_bytes": 216,
+        "literal_bytes": 24,
+        "archive_size": 84
+      },
+      "new_result": {
+        "raw_candidate_count": 65,
+        "normalized_match_count": 1,
+        "covered_bytes": 216,
+        "literal_bytes": 24,
+        "archive_size": 600,
+        "archive_sha256": "170bd80f061887a83cb23e2b3f0469b8b717106a0aac9c69676fcfb60421ebc4"
+      },
+      "m4_witness": {
+        "seed_source": 32,
+        "seed_target": 56,
+        "backward_bytes": 32,
+        "source": 0,
+        "destination": 24,
+        "length": 216
+      },
+      "notes": "Comparable L=16/min=16/block=8KiB I/O vector. The production m4 candidate proves a 32-byte backward extension, strictly greater than L."
+    }
+  ],
+  "conformance": {
+    "method": "m3",
+    "layout": "index",
+    "seed_size": 3,
+    "minimum_match": 7,
+    "raw_candidate_count": 640,
+    "normalized_match_count": 2,
+    "covered_bytes": 117,
+    "literal_bytes": 24,
+    "corpus_recipe": "abc repeated 20, XYZ repeated 7, abc repeated 20",
+    "scope": "new-only L=3/min=7 fixed-grid rounding conformance; not an old comparison"
+  }
+}

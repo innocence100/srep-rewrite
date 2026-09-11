@@ -1,0 +1,68 @@
+{
+  "schema": "stage7-m5-v1",
+  "corpus": {
+    "file": "stage7-m5-comparable.bin",
+    "sha256": "87c3485be8b164fc50837dd4694cedbfc9be39f4c03220376ee47d7373f37425",
+    "size": 78
+  },
+  "witness_corpus": {
+    "file": "stage7-m5.bin",
+    "sha256": "8eb5ce3fad0f9727db55037ed5dbe9201a2beb0bb3ae22adf26c74479def381b",
+    "size": 77
+  },
+  "old_binary": {
+    "name": "SREP 3.93a beta",
+    "sha256": "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e",
+    "read_only": true
+  },
+  "comparison": {
+    "method": "m5",
+    "layout": "io",
+    "old_minimum_match": 16,
+    "old_seed_size": 8,
+    "old_header_base_len": 16,
+    "minimum_match": 16,
+    "derived_seed_size": 8,
+    "block_size": 8192,
+    "rep_overlay": false,
+    "old_command": ["srep", "-v0", "-b8k", "-l16", "-d0", "-m5o", "-hash=md5", "INPUT", "OUTPUT"],
+    "new_command": ["srep", "compress", "--method", "m5", "--layout", "io", "--checksum", "xxh3", "--block-size", "8KiB", "--min-match", "16", "INPUT", "OUTPUT"],
+    "old_archive": {
+      "file": "stage7-old-m5.srep",
+      "sha256": "979fc79e1461cdf98da9604b417780e5095184fe90b49ac95d9ffe508682d2b0",
+      "size": 106,
+      "version": 2,
+      "layout": "io",
+      "checksum": "md5",
+      "base_len": 16
+    },
+    "forced_m4_archive": {
+      "file": "stage7-old-m4-comparable.srep",
+      "sha256": "d904e2fc44bf720e0faafc4bdb892a2e5a757bbedb2ef77943c74386bd0fbd8b",
+      "size": 122,
+      "match_count": 0
+    },
+    "old_result": {
+      "match_count": 1,
+      "encoded_bytes": 16,
+      "covered_bytes": 32,
+      "literal_bytes": 46,
+      "archive_size": 106
+    },
+    "new_result": {
+      "raw_candidate_count": 1,
+      "normalized_match_count": 1,
+      "covered_bytes": 32,
+      "literal_bytes": 46,
+      "archive_size": 638,
+      "archive_sha256": "46cd35b4cc82fe76355e9b646c9c7696c59b259cb235e60c0da7270fea94fb90"
+    },
+    "m5_witness": {
+      "source": 32,
+      "destination": 35,
+      "length": 15,
+      "nonaligned_target": true
+    },
+    "notes": "Directed Stage7 M5 comparison. Old SREP 3.93a uses derived L=8 from -l16 with no -c override; the legacy BASE_LEN header field is a separate decoder minimum field and remains 16. New M5 uses normative derived L=8/minimum=16. Both archives round-trip. The old derived-L M5 vector differs from forced-L M4 on this discriminator corpus; this is comparable parameter evidence, not a full fidelity claim."
+  }
+}

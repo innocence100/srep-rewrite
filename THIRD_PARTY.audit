@@ -1,0 +1,53 @@
+arrayvec|0.7.8|MIT OR Apache-2.0|https://github.com/bluss/arrayvec
+aes|0.8.4|MIT OR Apache-2.0|https://github.com/RustCrypto/block-ciphers
+bitflags|2.13.1|MIT OR Apache-2.0|https://github.com/bitflags/bitflags
+blake3|1.8.7|CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH LLVM-exception|https://github.com/BLAKE3-team/BLAKE3
+cc|1.4.4|MIT OR Apache-2.0|https://github.com/rust-lang/cc-rs
+cfg-if|1.0.4|MIT OR Apache-2.0|https://github.com/rust-lang/cfg-if
+constant_time_eq|0.4.2|CC0-1.0 OR MIT-0 OR Apache-2.0|https://github.com/cesarb/constant_time_eq
+cpufeatures|0.3.1|MIT OR Apache-2.0|https://github.com/RustCrypto/utils
+cpufeatures|0.2.17|MIT OR Apache-2.0|https://github.com/RustCrypto/utils
+block-buffer|0.10.4|MIT OR Apache-2.0|https://github.com/RustCrypto/utils
+cipher|0.4.4|MIT OR Apache-2.0|https://github.com/RustCrypto/traits
+crypto-common|0.1.7|MIT OR Apache-2.0|https://github.com/RustCrypto/traits
+digest|0.10.7|MIT OR Apache-2.0|https://github.com/RustCrypto/traits
+generic-array|0.14.7|MIT|https://github.com/fizyk20/generic-array.git
+errno|0.3.14|MIT OR Apache-2.0|https://github.com/lambda-fairy/rust-errno
+fastrand|2.5.0|Apache-2.0 OR MIT|https://github.com/smol-rs/fastrand
+find-msvc-tools|0.1.11|MIT OR Apache-2.0|https://github.com/rust-lang/cc-rs
+getrandom|0.4.3|MIT OR Apache-2.0|https://github.com/rust-random/getrandom
+libc|0.2.189|MIT OR Apache-2.0|https://github.com/rust-lang/libc
+linux-raw-sys|0.12.1|Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT|https://github.com/sunfishcode/linux-raw-sys
+inout|0.1.4|MIT OR Apache-2.0|https://github.com/RustCrypto/utils
+md-5|0.10.6|MIT OR Apache-2.0|https://github.com/RustCrypto/hashes
+once_cell|1.21.4|MIT OR Apache-2.0|https://github.com/matklad/once_cell
+r-efi|6.0.0|MIT OR Apache-2.0 OR LGPL-2.1-or-later|https://github.com/r-efi/r-efi
+rustix|1.1.4|Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT|https://github.com/bytecodealliance/rustix
+same-file|1.0.6|Unlicense/MIT|https://github.com/BurntSushi/same-file
+sha1|0.10.7|MIT OR Apache-2.0|https://github.com/RustCrypto/hashes
+sha2|0.10.9|MIT OR Apache-2.0|https://github.com/RustCrypto/hashes
+shlex|2.0.1|MIT OR Apache-2.0|https://github.com/comex/rust-shlex
+siphasher|1.0.3|MIT/Apache-2.0|https://github.com/jedisct1/rust-siphash
+tempfile|3.27.0|MIT OR Apache-2.0|https://github.com/Stebalien/tempfile
+twox-hash|2.1.4|MIT|https://github.com/shepmaster/twox-hash
+typenum|1.20.1|MIT OR Apache-2.0|https://github.com/paholg/typenum
+version_check|0.9.5|MIT/Apache-2.0|https://github.com/SergioBenitez/version_check
+winapi-util|0.1.11|Unlicense OR MIT|https://github.com/BurntSushi/winapi-util
+windows-link|0.2.1|MIT OR Apache-2.0|https://github.com/microsoft/windows-rs
+windows-sys|0.61.2|MIT OR Apache-2.0|https://github.com/microsoft/windows-rs
+itoa|1.0.18|MIT OR Apache-2.0|https://github.com/dtolnay/itoa
+memchr|2.8.3|Unlicense OR MIT|https://github.com/BurntSushi/memchr
+proc-macro2|1.0.107|MIT OR Apache-2.0|https://github.com/dtolnay/proc-macro2
+pulldown-cmark|0.13.0|MIT|https://github.com/raphlinus/pulldown-cmark
+quote|1.0.47|MIT OR Apache-2.0|https://github.com/dtolnay/quote
+serde|1.0.229|MIT OR Apache-2.0|https://github.com/serde-rs/serde
+serde_core|1.0.229|MIT OR Apache-2.0|https://github.com/serde-rs/serde
+serde_derive|1.0.229|MIT OR Apache-2.0|https://github.com/serde-rs/serde
+serde_json|1.0.151|MIT OR Apache-2.0|https://github.com/serde-rs/json
+syn|3.0.4|MIT OR Apache-2.0|https://github.com/dtolnay/syn
+tinyvec|1.12.0|Zlib OR Apache-2.0 OR MIT|https://github.com/Lokathor/tinyvec
+tinyvec_macros|0.1.1|MIT OR Apache-2.0 OR Zlib|https://github.com/Soveu/tinyvec_macros
+unicase|2.9.0|MIT OR Apache-2.0|https://github.com/seanmonstar/unicase
+unicode-ident|1.0.24|(MIT OR Apache-2.0) AND Unicode-3.0|https://github.com/dtolnay/unicode-ident
+unicode-normalization|0.1.25|MIT OR Apache-2.0|https://github.com/unicode-rs/unicode-normalization
+zmij|1.0.23|MIT|https://github.com/dtolnay/zmij

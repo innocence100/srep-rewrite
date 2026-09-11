@@ -1,0 +1,293 @@
+{
+  "schema": "fidelity-corpus-v2",
+  "samples": [
+    {
+      "id": "fidelity-v1-01",
+      "categories": [
+        "exact"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "exact-repeat",
+        "size": 262144,
+        "seed": 16640
+      },
+      "sha256": "bc7d9a4903c4d0f80f7bd8c1bbe1e5d39e6a7a48c968e88cd7640ac43a43859b",
+      "size": 262144
+    },
+    {
+      "id": "fidelity-v1-02",
+      "categories": [
+        "nonaligned"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "nonaligned-repeat",
+        "size": 524288,
+        "seed": 16641
+      },
+      "sha256": "9c4610eef59e830817c9bac41c6786a6c0ac6f8127b673f38485577024a4ceeb",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-03",
+      "categories": [
+        "insert-delete"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "insert-delete",
+        "size": 524288,
+        "seed": 16642
+      },
+      "sha256": "52f13e80d570d4e8fb9924d8de7ee234f81968fd79b9742cb17d834f66f4bec5",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-04",
+      "categories": [
+        "order1"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "order1",
+        "size": 524288,
+        "seed": 16643
+      },
+      "sha256": "22f8240bcb1dc07d5094a9a80e31adde813cd25e15ea3428d71858692e32d2ce",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-05",
+      "categories": [
+        "far-distance"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "far-distance",
+        "size": 2097152,
+        "seed": 16644
+      },
+      "sha256": "244e30c0e4723bcd7d7ff500d055d0ed5630849ee2a333630cae09b3025dd245",
+      "size": 2097152
+    },
+    {
+      "id": "fidelity-v1-06",
+      "categories": [
+        "multiversion-tree"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "multiversion-tree",
+        "size": 524288,
+        "seed": 16645
+      },
+      "sha256": "ccc17e8a0a7d004780eeb117183b820be28275de8bd28e0448abcb1d62bedbfc",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-07",
+      "categories": [
+        "vm-disk-sparse"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "vm-disk-sparse",
+        "size": 524288,
+        "seed": 16646
+      },
+      "sha256": "0bdbc925b10ebdb128d72b651d56dbae7f539e16b6b2c24e87c837cebc0bc8df",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-08",
+      "categories": [
+        "compressed-block-repeat"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "compressed-block-repeat",
+        "size": 524288,
+        "seed": 16647
+      },
+      "sha256": "42ebe0455f90f67a6f47cc1b76e1154dee276b188731efe1372c843ff73dae08",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-09",
+      "categories": [
+        "random-incompressible"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "random-incompressible",
+        "size": 262144,
+        "seed": 16648
+      },
+      "sha256": "cdd2f67e474be85f6ee46507ad626a0bc81bd96faaf7bf7d947bf5a56f09062c",
+      "size": 262144
+    },
+    {
+      "id": "fidelity-v1-10",
+      "categories": [
+        "exact"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "exact-repeat",
+        "size": 524288,
+        "seed": 16649
+      },
+      "sha256": "f9afa2b628bd836a9a14731f0e3a82706dcfd403941a7ca946f8eaebcc4f5581",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-11",
+      "categories": [
+        "nonaligned"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "nonaligned-repeat",
+        "size": 524288,
+        "seed": 16650
+      },
+      "sha256": "5e5e5c4024c5aee82bc4ff9b3f0b32819fcde213df3149827f9f3f3db227162a",
+      "size": 524288
+    },
+    {
+      "id": "fidelity-v1-12",
+      "categories": [
+        "multiversion-tree"
+      ],
+      "methods": [
+        "m0",
+        "m1",
+        "m2",
+        "m3",
+        "m4",
+        "m5"
+      ],
+      "representative": true,
+      "generator": "scripts/fidelity.py:make_sample",
+      "version": "2",
+      "args": {
+        "recipe": "multiversion-tree",
+        "size": 786432,
+        "seed": 16651
+      },
+      "sha256": "15d33942efbf8baf849c54ad56fa24d02b9dce1b05694ae8ff872f7e28a128db",
+      "size": 786432
+    }
+  ]
+}

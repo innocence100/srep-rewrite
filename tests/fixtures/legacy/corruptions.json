@@ -1,0 +1,2070 @@
+{
+  "schema": "srep-legacy-corruptions-v1",
+  "base_fixture": "v4-md5.srep",
+  "cases": [
+    {
+      "name": "signature.word1",
+      "offset": 7,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "signature.word0",
+      "offset": 0,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.version",
+      "offset": 8,
+      "operation": "xor",
+      "value": 1,
+      "expected": "UnsupportedVersion",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.hash_id",
+      "offset": 9,
+      "operation": "xor",
+      "value": 128,
+      "expected": "UnknownChecksum",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.seed_len",
+      "offset": 10,
+      "operation": "xor",
+      "value": 1,
+      "expected": "UnknownChecksum",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.bias",
+      "offset": 11,
+      "operation": "xor",
+      "value": 1,
+      "expected": "UnknownChecksum",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.version.high",
+      "offset": 8,
+      "operation": "xor",
+      "value": 128,
+      "expected": "UnsupportedVersion",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "base_len",
+      "offset": 12,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "block.literal_bytes",
+      "offset": 16,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "block.uncompressed_len",
+      "offset": 20,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "block.inline_stat_bytes",
+      "offset": 24,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "block.digest",
+      "offset": 28,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "block.literal.boundary",
+      "offset": 140,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "block.literal.content",
+      "offset": 143,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.body.digest2",
+      "offset": 72,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.body.literal2",
+      "offset": 100,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.size_entry",
+      "offset": 256,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.stat_total",
+      "offset": 272,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.footer.version",
+      "offset": 284,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.footer.marker0",
+      "offset": 288,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.footer.marker1",
+      "offset": 292,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.range.body_start",
+      "offset": 240,
+      "operation": "xor",
+      "value": 16,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4.range.stats_start",
+      "offset": 272,
+      "operation": "xor",
+      "value": 16,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "v4-none.opaque_digest",
+      "base_fixture": "v4-none.srep",
+      "offset": 28,
+      "operation": "xor",
+      "value": 1,
+      "expected": "Accepted"
+    },
+    {
+      "name": "v4-none.literal_mutation",
+      "base_fixture": "v4-none.srep",
+      "offset": 50,
+      "operation": "xor",
+      "value": 1,
+      "expected": "Accepted"
+    },
+    {
+      "name": "truncate.body",
+      "offset": 140,
+      "operation": "delete",
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep",
+      "value": 1
+    },
+    {
+      "name": "truncate.digest",
+      "offset": 116,
+      "operation": "delete",
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep",
+      "value": 1
+    },
+    {
+      "name": "truncate.stats",
+      "offset": 180,
+      "operation": "delete",
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep",
+      "value": 1
+    },
+    {
+      "name": "truncate.size",
+      "offset": 240,
+      "operation": "delete",
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep",
+      "value": 1
+    },
+    {
+      "name": "truncate.footer",
+      "offset": 295,
+      "operation": "delete",
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep",
+      "value": 1
+    },
+    {
+      "name": "signature.byte2",
+      "offset": 1,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "signature.byte3",
+      "offset": 2,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "signature.byte4",
+      "offset": 3,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "signature.byte5",
+      "offset": 4,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "signature.byte6",
+      "offset": 5,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "signature.byte7",
+      "offset": 6,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptHeader",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.byte0.alt",
+      "offset": 8,
+      "operation": "xor",
+      "value": 64,
+      "expected": "UnsupportedVersion",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.byte1.alt",
+      "offset": 9,
+      "operation": "xor",
+      "value": 64,
+      "expected": "UnknownChecksum",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.byte2.alt",
+      "offset": 10,
+      "operation": "xor",
+      "value": 64,
+      "expected": "UnknownChecksum",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "packed.byte3.alt",
+      "offset": 11,
+      "operation": "xor",
+      "value": 64,
+      "expected": "UnknownChecksum",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte17",
+      "offset": 17,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte18",
+      "offset": 18,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte19",
+      "offset": 19,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte21",
+      "offset": 21,
+      "operation": "xor",
+      "value": 1,
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte22",
+      "offset": 22,
+      "operation": "xor",
+      "value": 1,
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte23",
+      "offset": 23,
+      "operation": "xor",
+      "value": 1,
+      "expected": "TruncatedArchive",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte25",
+      "offset": 25,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte26",
+      "offset": 26,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "body.byte27",
+      "offset": 27,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte144",
+      "offset": 144,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte145",
+      "offset": 145,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte146",
+      "offset": 146,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte147",
+      "offset": 147,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte148",
+      "offset": 148,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte149",
+      "offset": 149,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte150",
+      "offset": 150,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte151",
+      "offset": 151,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte152",
+      "offset": 152,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte153",
+      "offset": 153,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte154",
+      "offset": 154,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte155",
+      "offset": 155,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "index.byte156",
+      "offset": 156,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch",
+      "base_fixture": "v4-md5.srep"
+    },
+    {
+      "name": "vhash.seed.0",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 16,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.1",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 17,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.2",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 18,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.3",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 19,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.4",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 20,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.5",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 21,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.6",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 22,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.7",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 23,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.8",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 24,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.9",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 25,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.10",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 26,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.11",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 27,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.12",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 28,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.13",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 29,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.14",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 30,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.15",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 31,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.16",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 32,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.17",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 33,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.18",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 34,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.19",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 35,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.20",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 36,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.21",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 37,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.22",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 38,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.23",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 39,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.24",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 40,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.25",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 41,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.26",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 42,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.27",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 43,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.28",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 44,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.29",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 45,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.30",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 46,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "vhash.seed.31",
+      "base_fixture": "v1-vmac.srep",
+      "offset": 47,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.0",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 16,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.1",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 17,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.2",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 18,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.3",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 19,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.4",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 20,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.5",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 21,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.6",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 22,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.7",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 23,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.8",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 24,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.9",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 25,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.10",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 26,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.11",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 27,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.12",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 28,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.13",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 29,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.14",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 30,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "siphash.seed.15",
+      "base_fixture": "v1-siphash.srep",
+      "offset": 31,
+      "operation": "xor",
+      "value": 1,
+      "expected": "ChecksumMismatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.0",
+      "base_fixture": "v3-md5.srep",
+      "offset": 44,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.1",
+      "base_fixture": "v3-md5.srep",
+      "offset": 45,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.2",
+      "base_fixture": "v3-md5.srep",
+      "offset": 46,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.3",
+      "base_fixture": "v3-md5.srep",
+      "offset": 47,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.4",
+      "base_fixture": "v3-md5.srep",
+      "offset": 48,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.5",
+      "base_fixture": "v3-md5.srep",
+      "offset": 49,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.6",
+      "base_fixture": "v3-md5.srep",
+      "offset": 50,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "v3-md5.srep.stat_field.7",
+      "base_fixture": "v3-md5.srep",
+      "offset": 51,
+      "operation": "xor",
+      "value": 1,
+      "expected": "InvalidMatch"
+    },
+    {
+      "name": "footer-required-273",
+      "base_fixture": "v4-md5.srep",
+      "offset": 273,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-274",
+      "base_fixture": "v4-md5.srep",
+      "offset": 274,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-275",
+      "base_fixture": "v4-md5.srep",
+      "offset": 275,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-276",
+      "base_fixture": "v4-md5.srep",
+      "offset": 276,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-277",
+      "base_fixture": "v4-md5.srep",
+      "offset": 277,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-278",
+      "base_fixture": "v4-md5.srep",
+      "offset": 278,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-279",
+      "base_fixture": "v4-md5.srep",
+      "offset": 279,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-280",
+      "base_fixture": "v4-md5.srep",
+      "offset": 280,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-281",
+      "base_fixture": "v4-md5.srep",
+      "offset": 281,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-282",
+      "base_fixture": "v4-md5.srep",
+      "offset": 282,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-283",
+      "base_fixture": "v4-md5.srep",
+      "offset": 283,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-285",
+      "base_fixture": "v4-md5.srep",
+      "offset": 285,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-286",
+      "base_fixture": "v4-md5.srep",
+      "offset": 286,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-287",
+      "base_fixture": "v4-md5.srep",
+      "offset": 287,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-289",
+      "base_fixture": "v4-md5.srep",
+      "offset": 289,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-290",
+      "base_fixture": "v4-md5.srep",
+      "offset": 290,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-291",
+      "base_fixture": "v4-md5.srep",
+      "offset": 291,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-293",
+      "base_fixture": "v4-md5.srep",
+      "offset": 293,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-294",
+      "base_fixture": "v4-md5.srep",
+      "offset": 294,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "footer-required-295",
+      "base_fixture": "v4-md5.srep",
+      "offset": 295,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.272",
+      "base_fixture": "v4-none.srep",
+      "offset": 272,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.273",
+      "base_fixture": "v4-none.srep",
+      "offset": 273,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.274",
+      "base_fixture": "v4-none.srep",
+      "offset": 274,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.275",
+      "base_fixture": "v4-none.srep",
+      "offset": 275,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.276",
+      "base_fixture": "v4-none.srep",
+      "offset": 276,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.277",
+      "base_fixture": "v4-none.srep",
+      "offset": 277,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.278",
+      "base_fixture": "v4-none.srep",
+      "offset": 278,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.279",
+      "base_fixture": "v4-none.srep",
+      "offset": 279,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.280",
+      "base_fixture": "v4-none.srep",
+      "offset": 280,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.281",
+      "base_fixture": "v4-none.srep",
+      "offset": 281,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.282",
+      "base_fixture": "v4-none.srep",
+      "offset": 282,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.283",
+      "base_fixture": "v4-none.srep",
+      "offset": 283,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.284",
+      "base_fixture": "v4-none.srep",
+      "offset": 284,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.285",
+      "base_fixture": "v4-none.srep",
+      "offset": 285,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.286",
+      "base_fixture": "v4-none.srep",
+      "offset": 286,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.287",
+      "base_fixture": "v4-none.srep",
+      "offset": 287,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.288",
+      "base_fixture": "v4-none.srep",
+      "offset": 288,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.289",
+      "base_fixture": "v4-none.srep",
+      "offset": 289,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.290",
+      "base_fixture": "v4-none.srep",
+      "offset": 290,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.291",
+      "base_fixture": "v4-none.srep",
+      "offset": 291,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.292",
+      "base_fixture": "v4-none.srep",
+      "offset": 292,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.293",
+      "base_fixture": "v4-none.srep",
+      "offset": 293,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.294",
+      "base_fixture": "v4-none.srep",
+      "offset": 294,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-none.srep.footer.295",
+      "base_fixture": "v4-none.srep",
+      "offset": 295,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.288",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 288,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.289",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 289,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.290",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 290,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.291",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 291,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.292",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 292,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.293",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 293,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.294",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 294,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.295",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 295,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.296",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 296,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.297",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 297,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.298",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 298,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.299",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 299,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.300",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 300,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.301",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 301,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.302",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 302,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.303",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 303,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.304",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 304,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.305",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 305,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.306",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 306,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.307",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 307,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.308",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 308,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.309",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 309,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.310",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 310,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha1.srep.footer.311",
+      "base_fixture": "v4-sha1.srep",
+      "offset": 311,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.464",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 464,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.465",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 465,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.466",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 466,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.467",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 467,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.468",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 468,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.469",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 469,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.470",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 470,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.471",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 471,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.472",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 472,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.473",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 473,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.474",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 474,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.475",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 475,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.476",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 476,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.477",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 477,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.478",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 478,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.479",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 479,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.480",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 480,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.481",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 481,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.482",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 482,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.483",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 483,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.484",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 484,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.485",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 485,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.486",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 486,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-sha512.srep.footer.487",
+      "base_fixture": "v4-sha512.srep",
+      "offset": 487,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.304",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 304,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.305",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 305,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.306",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 306,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.307",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 307,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.308",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 308,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.309",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 309,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.310",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 310,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.311",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 311,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.312",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 312,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.313",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 313,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.314",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 314,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.315",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 315,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.316",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 316,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.317",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 317,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.318",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 318,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.319",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 319,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.320",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 320,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.321",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 321,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.322",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 322,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.323",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 323,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.324",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 324,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.325",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 325,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.326",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 326,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-vmac.srep.footer.327",
+      "base_fixture": "v4-vmac.srep",
+      "offset": 327,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.256",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 256,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.257",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 257,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.258",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 258,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.259",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 259,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.260",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 260,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.261",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 261,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.262",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 262,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.263",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 263,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.264",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 264,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.265",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 265,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.266",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 266,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.267",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 267,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.268",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 268,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.269",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 269,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.270",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 270,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.271",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 271,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.272",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 272,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.273",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 273,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.274",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 274,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.275",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 275,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.276",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 276,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.277",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 277,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.278",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 278,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    },
+    {
+      "name": "v4-siphash.srep.footer.279",
+      "base_fixture": "v4-siphash.srep",
+      "offset": 279,
+      "operation": "xor",
+      "value": 1,
+      "expected": "CorruptIndex"
+    }
+  ]
+}
