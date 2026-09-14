@@ -1,0 +1,28 @@
+# Independent XXH3-128 golden-vector provenance
+#
+# These pins are reproduced by scripts/checksum-goldens.py (entry point:
+# scripts/checksum-generate-goldens.sh, default --check) and must not change
+# without regenerating tests/fixtures/checksum/xxh3_128_reference.json and
+# re-running the Rust vector tests. They are intentionally separate from the
+# dependency pins declared in Cargo.toml / Cargo.lock, which this branch does
+# not touch.
+#
+# Upstream project : Cyan4973/xxHash
+# Upstream tag     : v0.8.2
+# Tag commit       : bbb27a5efb85b92a0486cf361a8635715a53f6ba
+# Release URL      : https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz
+# Licence          : BSD-2-Clause, Copyright (c) Yann Collet
+#
+# sha256 of the original release tarball:
+baee0c6afd4f03165de7a4e67988d16f0f2b257b51d0e3cb91909302a26a79c4  xxhash-v0.8.2.tar.gz
+#
+# sha256 of the individual sources used to build the generator:
+be275e9db21a503c37f24683cdb4908f2370a3e35ab96e02c4ea73dc8e399c43  xxHash-0.8.2/xxhash.h
+685ac6e9e32d1b5800ccb67cf3698c7f3f30130c159d385b5de34bf4d07a8e70  xxHash-0.8.2/xxhash.c
+#
+# The linked Rust dependency used by the production path is a different,
+# independently pinned artifact:
+#   crate     : twox-hash
+#   version   : 2.1.4
+#   checksum  : 5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a
+#   features  : std, xxhash3_128 (default-features = false)

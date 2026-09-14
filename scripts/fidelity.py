@@ -620,18 +620,20 @@ def _emit_progress(message: str) -> None:
 
 def _signal_process_group(process: subprocess.Popen, sig: int) -> None:
     # Unix process-group kill so compress/info children cannot outlive a timeout.
-    # This workspace does not treat local Windows behavior as verified.
-    if process.poll() is not None:
-        return
+    # Do not use poll() as a proxy for group liveness: the leader can exit while
+    # a descendant still owns the captured stdout/stderr pipe.  This workspace
+    # does not treat local Windows behavior as verified.
     if os.name != "nt" and hasattr(os, "killpg"):
         try:
             os.killpg(process.pid, sig)
             return
         except ProcessLookupError:
-            return
+            pass
         except OSError:
             pass
     try:
+        if process.poll() is not None:
+            return
         if sig == signal.SIGKILL:
             process.kill()
         else:
@@ -640,13 +642,43 @@ def _signal_process_group(process: subprocess.Popen, sig: int) -> None:
         return
 
 
+def _close_process_pipes(process: subprocess.Popen) -> None:
+    for stream in (process.stdin, process.stdout, process.stderr):
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+
+
+def _wait_bounded(process: subprocess.Popen) -> None:
+    try:
+        process.wait(timeout=_REAP_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        _signal_process_group(process, signal.SIGKILL)
+        try:
+            process.wait(timeout=_REAP_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            # There is no unbounded wait fallback.  The leader was already
+            # force-killed; returning is preferable to hanging the evaluator.
+            return
+
+
 def _reap_timed_process(process: subprocess.Popen) -> tuple[object, object]:
     _signal_process_group(process, signal.SIGTERM)
     try:
         return process.communicate(timeout=_REAP_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
         _signal_process_group(process, signal.SIGKILL)
-        return process.communicate()
+        try:
+            return process.communicate(timeout=_REAP_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            # A descendant outside the group may retain a pipe indefinitely.
+            # Close our descriptors and reap the leader with bounded waits; in
+            # particular, never call communicate()/wait() without a timeout.
+            _close_process_pipes(process)
+            _wait_bounded(process)
+            return (None, None)
 
 
 def run_command(
@@ -692,12 +724,12 @@ def run_command(
         try:
             _reap_timed_process(process)
         finally:
-            if process.poll() is None:
-                try:
-                    process.kill()
-                except ProcessLookupError:
-                    pass
-                process.wait()
+            # The leader may have exited as a result of SIGTERM while a
+            # descendant remains alive.  Group cleanup is therefore
+            # deliberately independent of the leader's return code.
+            _signal_process_group(process, signal.SIGKILL)
+            _close_process_pipes(process)
+            _wait_bounded(process)
         raise CommandTimeoutError(command, timeout) from expired
     result = subprocess.CompletedProcess(command, process.returncode, out, err)
     if check and result.returncode != 0:

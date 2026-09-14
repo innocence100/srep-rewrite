@@ -3,7 +3,7 @@ use std::io::{Cursor, Seek, SeekFrom, Write};
 
 use srep::{
     CandidateIndex, CompressionConfig, ErrorKind, HybridCandidateIndex, IndexEntry, Method,
-    ResourceContext,
+    ResourceContext, compress_with_candidates_with_context, compress_with_context, inspect_matches,
 };
 
 // The ignored acceptance test is run manually with:
@@ -15,6 +15,62 @@ fn key(value: u64) -> [u8; 8] {
 
 fn entry(position: u64, ordinal: u64) -> IndexEntry {
     IndexEntry::new(0, &key(9), position, ordinal, &[]).unwrap()
+}
+
+#[test]
+fn default_v3_compression_matches_each_public_full_finder() {
+    let input = b"0123456789abcdef".repeat(512);
+    for method in [
+        Method::M0Rep,
+        Method::M1RollingCdc,
+        Method::M2Order1Cdc,
+        Method::M3FixedDigest,
+        Method::M4Reread,
+        Method::M5Exhaustive,
+    ] {
+        let mut config = CompressionConfig::for_method(method);
+        config.block_size = 1024;
+        config.min_match = 16;
+        if matches!(method, Method::M1RollingCdc | Method::M2Order1Cdc) {
+            config.target_chunk = Some(32);
+        }
+        if matches!(method, Method::M3FixedDigest | Method::M4Reread) {
+            config.seed_size = Some(16);
+        }
+        let context = ResourceContext::with_resources(&config.resources).unwrap();
+        let candidates = find(method, &input, &config, &context);
+        let mut routed = Vec::new();
+        let routed_stats =
+            compress_with_context(Cursor::new(&input), &mut routed, &config, &context).unwrap();
+        let mut candidate_archive = Vec::new();
+        let candidate_stats = compress_with_candidates_with_context(
+            Cursor::new(&input),
+            &mut candidate_archive,
+            &config,
+            candidates.iter().copied(),
+            &context,
+        )
+        .unwrap();
+        assert_eq!(
+            routed_stats.semantic_match_count, candidate_stats.semantic_match_count,
+            "{method:?}"
+        );
+        assert_eq!(
+            routed_stats.covered_bytes, candidate_stats.covered_bytes,
+            "{method:?}"
+        );
+        assert_eq!(
+            routed_stats.literal_bytes, candidate_stats.literal_bytes,
+            "{method:?}"
+        );
+        assert_eq!(
+            inspect_matches(routed.as_slice()).unwrap().as_slice(),
+            inspect_matches(candidate_archive.as_slice())
+                .unwrap()
+                .as_slice(),
+            "{method:?} full finder IR"
+        );
+    }
 }
 
 #[test]

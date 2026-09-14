@@ -1,25 +1,48 @@
-# SREP-NG v2 stream format and legacy reader boundary
+# SREP-NG v2 stream format (historical, retired)
 
-The normative source for SREP-NG v2 is
+> **HISTORICAL — RETIRED, NOT CURRENT NORMATIVE.**
+> This document describes the **retired** SREP-NG v2 wire format. NG v2 is no
+> longer supported for reading or writing: the `SREPNG2\0` magic is recognized
+> and rejected as `UnsupportedVersion`, exactly like prototype NG v1, and the
+> `compress_v2*` writer APIs are removed. There is no active NG v2 reader,
+> writer, or compatibility surface. The current normative format is
+> **[`FORMAT-V3.md`](FORMAT-V3.md)**; this file is retained only as the frozen
+> historical reference for the v2 wire bytes its provenance evidence was built
+> on. Every "writes", "reads", or "supported" statement below is historical and
+> does **not** describe current behavior.
+
+The historical normative source for SREP-NG v2 was
 `docs/superpowers/specs/2026-08-30-srep-capability-fidelity-design.md`.
-This file summarizes the NG v2 records written by the CLI and candidate-driven
-library API, and the records strictly decoded today. It must not contradict the
-approved spec.
+This file summarized the NG v2 records that the CLI and candidate-driven
+library API wrote, and the records that were strictly decoded at the time. It
+is preserved for history and must not be read as a current contract.
 
-The CLI writes self-contained NG v2 archives. m0 uses representative matching,
-m1/m2 use their CDC finders, m3/m4 use fixed-grid finders, and m5 uses exhaustive
-fixed-polynomial matching. The library's
-`compress_with_candidates` API additionally writes canonical reference records
+The historical CLI wrote self-contained NG v2 archives. m0 used representative
+matching, m1/m2 used their CDC finders, m3/m4 used fixed-grid finders, and m5
+used exhaustive
+fixed-polynomial matching. The library's historical
+`compress_with_candidates` API additionally wrote canonical reference records
 from validated candidates. Prototype NG v1 (`SREPNG\0\x01`,
-including `.srep2`) is rejected as `UnsupportedVersion`. Legacy SuperREP
-signatures `0x26351817 0x50455253` are recognized by the dispatcher; actual
-v1–v4 decoding is strict and read-only for embedded archives; split indexes
-remain unsupported and the writer never emits legacy format.
+including `.srep2`) was rejected as `UnsupportedVersion`. In the current
+production boundary, the retired NG v2 magic `SREPNG2\0` is likewise rejected
+as `UnsupportedVersion`; it is never decoded. Historical SuperREP
+signatures `0x26351817 0x50455253` remain recognized by the dispatcher, and
+their v1–v4 decoding is strict and read-only for embedded archives; split
+indexes remain unsupported and the writer never emits a legacy format. The
+historical SuperREP **version 2** is a distinct legacy container with that
+different signature and stays readable; it is **not** NG v2.
 
 All integers are unsigned little-endian. Wire positions, lengths, offsets,
-sizes, and counts are `u64`. Checksums are selected once in the ArchiveHeader
+sizes, and counts are `u64`. Checksums were selected once in the ArchiveHeader
 and used for ordinary records, DataBlock representation-plus-semantics, and the
 archive semantic digest.
+
+---
+
+**The remainder of this document is the retained historical NG v2 wire
+reference. It is history, not current normative text.** No statement below
+promises that NG v2 is written, read, or supported today; the present tense is
+the original 2026 documentation and is preserved unchanged for provenance.
 
 ## Archive layout
 

@@ -185,6 +185,29 @@ fn corruption_does_not_leave_partial_destination() {
 }
 
 #[test]
+fn ng_v2_is_rejected_before_creating_destination() {
+    let dir = temp_dir();
+    let archive = dir.join("ng-v2.srep");
+    let output = dir.join("out.bin");
+    let mut bytes = b"SREPNG2\0".to_vec();
+    bytes.extend_from_slice(&[0xff; 80]);
+    fs::write(&archive, bytes).unwrap();
+    let result = Command::new(bin())
+        .args([
+            "decompress",
+            archive.to_str().unwrap(),
+            output.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert_eq!(result.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&result.stderr).contains("SREP_E_UNSUPPORTED_VERSION"));
+    assert!(!output.exists());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn relative_paths_work_from_current_directory() {
     let dir = temp_dir();
     let input = dir.join("relative-input.bin");
@@ -663,7 +686,7 @@ fn layout_and_checksum_cli_round_trips() {
             .unwrap();
         assert!(info.status.success());
         let stdout = String::from_utf8_lossy(&info.stdout);
-        assert!(stdout.contains("format: SREP-NG v2"));
+        assert!(stdout.contains("format: SREP-NG v3"));
         assert!(stdout.contains(&format!("layout: {layout}")));
         assert!(stdout.contains(&format!("checksum: {checksum}")));
         assert!(!stdout.contains("semantic matches: 0"));
@@ -853,7 +876,7 @@ fn m1_and_m2_cli_select_real_finders_and_round_trip() {
 }
 
 #[test]
-fn v2_checksum_failure_does_not_leave_partial_destination() {
+fn v3_checksum_failure_does_not_leave_partial_destination() {
     let dir = temp_dir();
     let input = dir.join("input.bin");
     let archive = dir.join("archive.srep");

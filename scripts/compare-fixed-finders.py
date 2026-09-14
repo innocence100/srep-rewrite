@@ -20,6 +20,7 @@ MANIFEST = FIXTURES / "stage6-fixed.json"
 CORPUS = FIXTURES / "stage6-fixed.bin"
 DECODER_DEFAULT = ROOT / "target" / "debug" / "srep"
 
+
 TOP_KEYS = {"schema", "corpus", "old_binary", "comparisons", "conformance"}
 CORPUS_KEYS = {"file", "sha256", "size"}
 OLD_BINARY_KEYS = {"name", "sha256", "read_only"}
@@ -312,21 +313,34 @@ def verify_legacy_header(archive: Path, expected: dict) -> None:
         raise ValueError(f"legacy header mismatch: {archive.name}")
 
 
+def current_command(decoder: Path, item: dict, source: Path, archive: Path) -> list[str]:
+    """Replay the recorded compression options through the current NGv3 CLI."""
+    command = [os.fspath(decoder), *item["new_command"][1:]]
+    return [
+        arg.replace("INPUT", os.fspath(source)).replace("OUTPUT", os.fspath(archive))
+        for arg in command
+    ]
+
+
 def verify_new_archive(decoder: Path, item: dict, data: bytes, directory: Path) -> None:
     source = directory / f"new-{item['method']}.bin"
     archive = directory / f"new-{item['method']}.srep"
     source.write_bytes(data)
-    command = [os.fspath(decoder), *item["new_command"][1:]]
-    command = [arg.replace("INPUT", os.fspath(source)).replace("OUTPUT", os.fspath(archive)) for arg in command]
-    subprocess.run(command, check=True, capture_output=True)
+    subprocess.run(current_command(decoder, item, source, archive), check=True, capture_output=True)
+    if archive.read_bytes()[:8] != b"SREPNG3\0":
+        raise ValueError(f"current {item['method']} command did not emit NGv3")
+    info = subprocess.run(
+        [os.fspath(decoder), "info", os.fspath(archive)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if "format: SREP-NG v3" not in info:
+        raise ValueError(f"current {item['method']} archive was not labeled NGv3")
     values = info_values(decoder, archive)
     expected = item["new_result"]
     if values != {"original size": len(data), "blocks": 1, "semantic matches": expected["normalized_match_count"], "covered bytes": expected["covered_bytes"], "literal bytes": expected["literal_bytes"]}:
         raise ValueError(f"new archive metadata mismatch: {item['method']}: {values}")
-    if archive.stat().st_size != expected["archive_size"]:
-        raise ValueError(f"new archive size mismatch: {item['method']}")
-    if sha256(archive.read_bytes()) != expected["archive_sha256"]:
-        raise ValueError(f"new archive hash mismatch: {item['method']}")
     verify_archive(decoder, archive, {"match_count": expected["normalized_match_count"], "covered_bytes": expected["covered_bytes"], "literal_bytes": expected["literal_bytes"]}, data, directory)
 
 
@@ -461,7 +475,10 @@ def main() -> int:
             verify_new_archive(args.decoder, item, data, directory)
         if args.old_binary:
             verify_old(args.old_binary, args.decoder, manifest, directory)
-    print("validated strict Stage 6 comparable evidence, retained archives, headers, metrics, witness, tamper resistance, and round trips")
+    print(
+        "validated Stage 6 historical fixture bytes offline plus current NGv3 "
+        "semantic metrics, witness, tamper resistance, and round trips; no NGv2 output compatibility claimed"
+    )
     return 0
 
 

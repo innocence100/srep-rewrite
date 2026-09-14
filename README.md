@@ -1,11 +1,14 @@
 # SREP-NG
 
 SREP-NG is a clean-room Rust 2024 implementation of the SuperREP preprocessor.
-This tree writes self-contained **NG v2** `.srep` archives and strictly reads
-embedded legacy `.srep` v1–v4 archives. Stage 8 implements m0–m5 finders with a
+This tree writes self-contained **NG v3** `.srep` archives and strictly reads
+NG v3 plus embedded historical SuperREP `.srep` v1–v4 archives. Stage 8 implements m0–m5 finders with a
 deterministic RAM-or-spill CandidateIndex, including the m3/m4/m5 REP overlay, while the
-library also provides a candidate-driven reference path for all three NG v2 layouts.
-Prototype NG v1 / `.srep2` archives are rejected.
+library also provides a candidate-driven path for all three NG v3 layouts.
+Prototype NG v1 / `.srep2` archives and retired NG v2 (`SREPNG2\0`) archives are
+rejected as `UnsupportedVersion`. NG v2 is retired exactly like prototype NG v1:
+the `compress_v2*` compatibility APIs and the NG v2 reader/writer are gone, and
+no compatibility surface emits or decodes NG v2.
 
 The code is original and does not wrap, port, or shell out to the historical C++
 implementation for normal archive operations. The separate legacy fixture
@@ -13,10 +16,13 @@ generator CLI is the only migration tool that invokes a caller-supplied
 historical binary; it is append-only and never installs generated files into
 this tree. `unsafe` is forbidden in both the library and the binary.
 
-The approved normative wire and algorithm source is
-`docs/superpowers/specs/2026-08-30-srep-capability-fidelity-design.md`.
-`docs/FORMAT.md` summarizes the NG v2 writer and legacy read boundary and must
-not contradict that spec.
+The approved normative wire and algorithm source for the current NG v3 format is
+`docs/FORMAT-V3.md`; it must not contradict the frozen historical design at
+`docs/superpowers/specs/2026-08-30-srep-capability-fidelity-design.md`. That
+frozen document remains the authoritative baseline only for the inherited
+matching algorithms and shared resource semantics, not for its retired NG v2
+wire format or any v2 compatibility surface. `docs/FORMAT.md` is the historical
+NG v2 wire reference, retained for history and not a current normative source.
 
 Stage 6 evidence includes a committed deterministic corpus and retained
 `-hash=md5` SREP 3.93a m3/m4 archives. Stage 7 evidence adds committed
@@ -31,6 +37,15 @@ both sides; m3 `L=3/min=7` remains a separate new-only conformance vector. The
 the m4 backward witness, scalar tamper rejection, and round trips offline. An
  optional old-binary runs verify the exact historical executable SHA256 and
 reproduces the retained archive bytes read-only.
+
+The historical NG v2 byte-comparison scripts (`compare-fixed-finders.py`,
+`compare-m5-finder.py`) retain frozen NG v2 hashes, headers, and metrics as
+offline provenance only. Their active decoder path now replays the recorded
+options through the current CLI, requires `SREPNG3\0`, checks current NGv3
+semantic metrics and witnesses, and round-trips the result. They deliberately
+do not compare current NGv3 bytes or sizes with retired NGv2 pins, and make no
+NGv2 output-compatibility claim. Optional old-binary reproduction remains a
+separate read-only historical check.
 
 ## Quick start
 
@@ -56,7 +71,7 @@ APIs and preserve non-UTF-8 and Windows WTF-8 path components.
 - `srep info [OPTIONS] INPUT`
 - `srep test [OPTIONS] INPUT` (verifies checksums and decoding without retaining output)
 
-Compression options implemented by the NG v2 writer:
+Compression options implemented by the NG v3 writer:
 
 - `--layout=index|future|io` (default `index`)
 - `--checksum=xxh3|blake3` (default `xxh3`)
@@ -92,9 +107,9 @@ structured `Error`/`ErrorKind` with stable codes and message IDs, and
 `inspect_matches` / `verify`. The candidate writer uses one shared Match IR,
 authoritative input equality checks, deterministic weighted normalization, and
 canonical Index-LZ, Future-LZ, and I/O-LZ records. The decoder validates the
-80-byte header, framed records, references, selected checksums, DataBlock
-representation-plus-semantics checksums, ArchiveSummary digest, trailer, and
-termination.
+80-byte header, layout records, references, per-block CRC32C, plaintext and
+encoded global digests, fixed tail locators, and exact termination. NG v3 has
+no record framing and does not claim a per-record hash.
 Resource-aware match inspection and normalization return reservation-owning
 collections. Use their slice, iterator, indexing, or `Deref` views and drop the
 result to release its memory reservation. `inspect_matches`, including the
@@ -126,10 +141,11 @@ aliases.
 
  | Capability | Status |
 |---|---|
-  | Write self-contained NG v2 | implemented; m0-m5 finders and candidate API |
-| Read NG v2 references | implemented, strict |
+  | Write self-contained NG v3 | implemented; m0-m5 finders and candidate API |
+| Read NG v3 references | implemented, strict |
+| Retired NG v2 (`SREPNG2\0`) | rejected as `UnsupportedVersion`; no writer/reader/compat surface |
 | Prototype NG v1 / `.srep2` | rejected as `UnsupportedVersion` |
-| Legacy `.srep` v1–v4 | embedded read-only decoding implemented; independently validated matrix and corruption evidence |
+| Historical SuperREP `.srep` v1–v4 | embedded read-only decoding implemented; independently validated matrix and corruption evidence |
 | Shared Match IR and normalization | implemented for supplied candidates |
 | Full three-layout match semantics | implemented for supplied candidates |
   | `m0` matching | implemented; deterministic RAM-or-spill CandidateIndex |
@@ -137,12 +153,22 @@ aliases.
  | `m3`/`m4` matching | implemented; fixed-grid exact matching and REP overlay |
   | `m5` matching | implemented; exhaustive fixed-polynomial finder and REP overlay, RAM-or-spill CandidateIndex |
   | Spill / paged CandidateIndex | implemented; bounded memtables spill deterministic temporary runs; exact-key queries and fan-in-16 compaction use bounded temporary storage |
- | Requirement extractor | later target; not present |
+  | Requirement extractor and audit | implemented; 515-unit manifest with curated semantic mappings and real test/evidence existence checks |
 
 Stage8 includes logical 64-bit position coverage beyond 256 MiB and an ignored
 release acceptance for actual m1 discovery across a repeated segment more than
 256 MiB behind its source. Candidate-driven archive staging is tested separately
 and is not treated as finder-discovery evidence.
+
+Requirement traceability is audit-only and does not change the public CLI or
+library interfaces. Run `cargo run --locked --bin requirement-audit -- --check`
+to validate the versioned manifest, canonical payloads/IDs, curated mappings,
+real Rust test targets/items, and safe repository-relative evidence paths. See
+`docs/acceptance-traceability.md` for the actionable checklist and honest
+outstanding acceptance gates. This audit does not claim that all mapped tests
+prove every behavior in their requirement; the true 72-sample fidelity gate,
+native Windows/macOS Actions evidence, and final reviewer PASS remain
+outstanding.
 
 ## Development
 

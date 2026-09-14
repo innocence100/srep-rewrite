@@ -2,7 +2,11 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-bin="$root/target/release/srep"
+bin=${SREP_RELEASE_BIN:-"$root/target/release/srep"}
+if [ ! -x "$bin" ]; then
+    printf '%s\n' "release smoke binary is not executable: $bin" >&2
+    exit 2
+fi
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/srep-smoke.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
@@ -74,7 +78,12 @@ import sys
 
 path = pathlib.Path(sys.argv[1])
 data = bytearray(path.read_bytes())
-data[-65] ^= 1
+if data[:8] == b"SREPNG3\0":
+    # v3 stores the encoded global digest in the final checksum-width bytes;
+    # mutating that field isolates ChecksumMismatch from tail-structure errors.
+    data[-1] ^= 1
+else:
+    data[-65] ^= 1
 path.write_bytes(data)
 PY
 set +e

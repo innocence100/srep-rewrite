@@ -168,10 +168,14 @@ fn run_info(args: Vec<OsString>) -> Result<()> {
         )?
     };
     if !options.quiet {
-        let format_name = if info.version == 2 {
-            "SREP-NG v2".to_owned()
-        } else {
+        // NG archives carry typed method/layout/checksum fields; legacy archives
+        // carry only the legacy_layout/legacy_checksum family fields.  The family
+        // discriminator is authoritative: legacy versions must not be mislabeled as
+        // SREP-NG merely because their version number collides with an NG one.
+        let format_name = if info.legacy_layout.is_some() {
             format!("legacy SREP v{}", info.version)
+        } else {
+            format!("SREP-NG v{}", info.version)
         };
         println!("format: {format_name}");
         println!(
@@ -761,7 +765,7 @@ fn default_decompress_path(input: &Path) -> Option<OsString> {
 
 fn usage() -> &'static str {
     "Usage: srep <compress|decompress|info|test> [OPTIONS] INPUT [OUTPUT]\n\n\
-     Stage 8 implements real m0 through m5 matching with a deterministic RAM-or-spill CandidateIndex; m5 is exhaustive and supports the REP overlay.\n\
+     SREP-NG v3 is the default archive format (per-block CRC32C plus global xxh3/blake3 digests). Stage 8 implements real m0 through m5 matching with a deterministic RAM-or-spill CandidateIndex; m5 is exhaustive and supports the REP overlay.\n\
      compress options: --method m0|m1|m2|m3|m4|m5 (-m0..-m5) --layout index|future|io --checksum xxh3|blake3 --block-size SIZE --min-match SIZE --max-distance SIZE --rep-overlay --rep-distance SIZE --rep-min-match SIZE --force --quiet\n\
 other options: --force --quiet --memory SIZE --temp-dir PATH --temp-limit SIZE --output-limit SIZE\n\
 SIZE units: B, KiB/K, MiB/M, GiB/G (binary powers of 1024); '-' means stdin/stdout\n\

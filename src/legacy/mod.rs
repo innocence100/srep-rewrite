@@ -1,6 +1,6 @@
 //! Strict, read-only decoder for embedded SREP legacy versions 1 through 4.
 //!
-//! The reader is deliberately independent from the NG v2 writer.  The archive,
+//! The reader is deliberately independent from the removed NGv2 writer. The archive,
 //! reconstructed output, and Future-LZ metadata are seekable private stores;
 //! untrusted archive-sized data is never accumulated in process memory.
 

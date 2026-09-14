@@ -615,6 +615,10 @@ impl Run {
         max_distance: u64,
         output: &mut BudgetedVec<IndexEntry>,
     ) -> Result<()> {
+        // The binary search below is only an optimization.  Validate the complete
+        // immutable run first so that neither the search nor its callback-visible
+        // suffix can hide corruption in an unvisited record.
+        self.validate()?;
         let mut file = File::open(&self.path).map_err(Error::temp_storage)?;
         let mut bytes = [0u8; INDEX_HEADER_LEN];
         file.read_exact(&mut bytes)

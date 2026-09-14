@@ -1,11 +1,21 @@
+//! Checksum primitives shared by SREP-NG v3 and the historical readers.
+//!
+//! XXH3-128 uses `twox-hash` 2.1.4 with the official default secret and seed
+//! zero, serialized as low64 little-endian then high64 little-endian (see
+//! [`encode_xxh3`]); BLAKE3-256 is serialized as the raw 32-byte digest.
+//!
+//! The unit tests below check internal consistency (oneshot vs. streaming
+//! within the same crate). Independent evidence for both the algorithm output
+//! and the serialization is maintained separately: the golden fixture
+//! `tests/fixtures/checksum/xxh3_128_reference.json` is generated from the
+//! official xxHash C reference by `scripts/checksum-generate-goldens.sh` and
+//! consumed by `tests/checksum_vectors.rs`. See `docs/checksum-audit.md` for
+//! the dependency unsafe inventory, cross-platform behaviour, and evidence
+//! status.
+
 use crate::config::Checksum;
-use crate::error::{Error, Result};
 use blake3::Hasher as Blake3Hasher;
 use twox_hash::XxHash3_128;
-
-const RECORD_DOMAIN: &[u8] = b"SREPNG2-RECORD\0";
-const BLOCK_DOMAIN: &[u8] = b"SREPNG2-BLOCK\0";
-const ARCHIVE_DOMAIN: &[u8] = b"SREPNG2-ARCHIVE\0";
 
 #[derive(Clone)]
 enum Inner {
@@ -61,101 +71,6 @@ pub fn encode_xxh3(value: u128) -> Vec<u8> {
     out
 }
 
-pub fn record_checksum(kind: Checksum, frame: &[u8; 12], payload: &[u8]) -> Vec<u8> {
-    let mut digest = record_digest_start(kind, frame);
-    digest.update(payload);
-    digest.finalize()
-}
-
-pub fn record_digest_start(kind: Checksum, frame: &[u8; 12]) -> Digest {
-    let mut digest = Digest::new(kind);
-    digest.update(RECORD_DOMAIN);
-    digest.update(frame);
-    digest
-}
-
-pub fn block_checksum(
-    kind: Checksum,
-    frame: &[u8; 12],
-    payload: &[u8],
-    block_id: u64,
-    dst_start: u64,
-    uncompressed: &[u8],
-) -> Result<Vec<u8>> {
-    let mut digest = block_digest_start(kind, frame);
-    digest.update(payload);
-    digest.update(&block_id.to_le_bytes());
-    digest.update(&dst_start.to_le_bytes());
-    let len = u64::try_from(uncompressed.len())
-        .map_err(|_| Error::corrupt_record("uncompressed length overflows u64"))?;
-    digest.update(&len.to_le_bytes());
-    digest.update(uncompressed);
-    Ok(digest.finalize())
-}
-
-pub fn block_digest_start(kind: Checksum, frame: &[u8; 12]) -> Digest {
-    let mut digest = Digest::new(kind);
-    digest.update(BLOCK_DOMAIN);
-    digest.update(frame);
-    digest
-}
-
-pub fn archive_digest(
-    kind: Checksum,
-    header: &[u8],
-    method_parameters: &[u8],
-    layout_metadata: &[u8],
-    uncompressed: &[u8],
-) -> Vec<u8> {
-    let mut digest = Digest::new(kind);
-    update_archive_digest(
-        &mut digest,
-        header,
-        method_parameters,
-        layout_metadata,
-        uncompressed,
-    );
-    digest.finalize()
-}
-
-pub fn archive_digest_start(
-    kind: Checksum,
-    header: &[u8],
-    method_parameters: &[u8],
-    layout_metadata: &[u8],
-) -> Digest {
-    let mut digest = Digest::new(kind);
-    digest.update(ARCHIVE_DOMAIN);
-    digest.update(header);
-    digest.update(method_parameters);
-    digest.update(layout_metadata);
-    digest
-}
-
-fn update_archive_digest(
-    digest: &mut Digest,
-    header: &[u8],
-    method_parameters: &[u8],
-    layout_metadata: &[u8],
-    uncompressed: &[u8],
-) {
-    digest.update(ARCHIVE_DOMAIN);
-    digest.update(header);
-    digest.update(method_parameters);
-    digest.update(layout_metadata);
-    digest.update(uncompressed);
-}
-
-pub fn verify_bytes(kind: Checksum, expected: &[u8], actual: &[u8], context: &str) -> Result<()> {
-    if expected != actual {
-        return Err(Error::checksum_mismatch(context));
-    }
-    if expected.len() != kind.width() {
-        return Err(Error::checksum_mismatch("checksum width mismatch"));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,7 +105,7 @@ mod tests {
 
     #[test]
     fn xxh3_serialization_is_low64_le_then_high64_le() {
-        let value = XxHash3_128::oneshot(b"srep-ng-v2");
+        let value = XxHash3_128::oneshot(b"srep-ng-v3");
         let encoded = encode_xxh3(value);
         assert_eq!(&encoded[..8], &(value as u64).to_le_bytes());
         assert_eq!(&encoded[8..], &((value >> 64) as u64).to_le_bytes());

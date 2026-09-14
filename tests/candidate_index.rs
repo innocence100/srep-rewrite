@@ -1,4 +1,5 @@
 use std::fs::OpenOptions;
+use std::io::{Read, Seek, SeekFrom, Write};
 
 use srep::{
     CandidateIndex, ErrorKind, HybridCandidateIndex, IndexEntry, MemoryBudget, RamCandidateIndex,
@@ -11,6 +12,114 @@ fn key(value: u64) -> [u8; 8] {
 
 fn entry(position: u64, ordinal: u64, metadata: &[u8]) -> IndexEntry {
     IndexEntry::new(0, &key(7), position, ordinal, metadata).unwrap()
+}
+
+fn entry_for_key(key_value: u64, position: u64, ordinal: u64) -> IndexEntry {
+    IndexEntry::new(0, &key(key_value), position, ordinal, &[]).unwrap()
+}
+
+fn replace_record(path: &std::path::Path, index: u64, bytes: &[u8; 104]) {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    let offset = 64 + index * 104;
+    file.seek(SeekFrom::Start(offset)).unwrap();
+    file.write_all(bytes).unwrap();
+    file.sync_all().unwrap();
+}
+
+fn read_record(path: &std::path::Path, index: u64) -> [u8; 104] {
+    let mut file = OpenOptions::new().read(true).open(path).unwrap();
+    let offset = 64 + index * 104;
+    file.seek(SeekFrom::Start(offset)).unwrap();
+    let mut bytes = [0; 104];
+    file.read_exact(&mut bytes).unwrap();
+    bytes
+}
+
+fn assert_post_publication_corruption_is_atomic(
+    swap_complete_records: bool,
+    force_memory_pressure: bool,
+) {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut context = ResourceContext::from_limits(64 * 1024, 1024 * 1024);
+    context.temp_dir = temp_dir.path().to_path_buf();
+    let mut index = HybridCandidateIndex::with_memtable_bytes_in(
+        &context,
+        temp_dir.path(),
+        4 * std::mem::size_of::<IndexEntry>() as u64,
+    )
+    .unwrap();
+    if force_memory_pressure {
+        index.insert(entry(40, 1, &[])).unwrap();
+        index.finish_epoch().unwrap();
+        for position in [40, 30, 20, 10] {
+            index.insert(entry(position, position, &[])).unwrap();
+        }
+        index.finish_epoch().unwrap();
+    } else {
+        for position in [40, 30, 20, 10] {
+            index.insert(entry(position, position, &[])).unwrap();
+        }
+        index.finish_epoch().unwrap();
+    }
+    let mut paths = index.run_paths();
+    let path = if force_memory_pressure {
+        paths.pop().unwrap()
+    } else {
+        paths[0].clone()
+    };
+    if swap_complete_records {
+        let first = read_record(&path, 0);
+        let last = read_record(&path, 3);
+        replace_record(&path, 0, &last);
+        replace_record(&path, 3, &first);
+    } else {
+        let mut corrupted = read_record(&path, 3);
+        corrupted[103] ^= 1;
+        replace_record(&path, 3, &corrupted);
+    }
+
+    let held = if force_memory_pressure {
+        Some(
+            context
+                .memory
+                .reserve(context.memory.limit().saturating_sub(1))
+                .unwrap(),
+        )
+    } else {
+        None
+    };
+    let before_generation = index.next_generation();
+    let before_paths = index.run_paths();
+    let before_memtable = index.memtable_entries().to_vec();
+    let before_spills = context.candidate_index_spill_count();
+    let before_memory = context.memory.current();
+    let before_temp = context.temp.current();
+    let mut callbacks = 0;
+    let error = index
+        .for_each_candidate(0, &key(7), 100, 0, &mut |_| {
+            callbacks += 1;
+            Ok(())
+        })
+        .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::CorruptIndex);
+    assert_eq!(callbacks, 0);
+    assert_eq!(index.next_generation(), before_generation);
+    assert_eq!(index.run_paths(), before_paths);
+    assert_eq!(index.memtable_entries(), before_memtable.as_slice());
+    assert_eq!(context.candidate_index_spill_count(), before_spills);
+    assert_eq!(context.memory.current(), before_memory);
+    assert_eq!(context.temp.current(), before_temp);
+    assert!(context.memory.high_water() <= context.memory.limit());
+    assert!(context.temp.high_water() <= context.temp.limit());
+    drop(held);
+    drop(index);
+    assert_eq!(context.memory.current(), 0);
+    assert_eq!(context.temp.current(), 0);
+    assert!(temp_dir.path().read_dir().unwrap().next().is_none());
 }
 
 #[test]
@@ -464,6 +573,77 @@ fn hybrid_callback_query_matches_ram_when_forced_to_spill() {
         .unwrap();
     assert_eq!(actual, expected);
     assert!(hybrid.run_count() > 0);
+}
+
+#[test]
+fn direct_query_validates_the_complete_published_run_before_callbacks() {
+    assert_post_publication_corruption_is_atomic(true, false);
+    assert_post_publication_corruption_is_atomic(false, false);
+}
+
+#[test]
+fn memory_pressure_query_validates_the_complete_published_run_before_callbacks() {
+    assert_post_publication_corruption_is_atomic(true, true);
+    assert_post_publication_corruption_is_atomic(false, true);
+}
+
+#[test]
+fn narrowed_query_rejects_corruption_in_an_unvisited_key_without_callbacks() {
+    for force_memory_pressure in [false, true] {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut context = ResourceContext::from_limits(64 * 1024, 1024 * 1024);
+        context.temp_dir = temp_dir.path().to_path_buf();
+        let mut index = HybridCandidateIndex::with_memtable_bytes_in(
+            &context,
+            temp_dir.path(),
+            4 * std::mem::size_of::<IndexEntry>() as u64,
+        )
+        .unwrap();
+        for (key_value, position) in [(7, 40), (7, 30), (8, 20), (8, 10)] {
+            index
+                .insert(entry_for_key(key_value, position, position))
+                .unwrap();
+        }
+        index.finish_epoch().unwrap();
+        assert_eq!(index.run_count(), 1);
+        let path = index.run_paths().pop().unwrap();
+        let mut corrupted = read_record(&path, 3);
+        corrupted[103] ^= 1;
+        replace_record(&path, 3, &corrupted);
+
+        let held = force_memory_pressure.then(|| {
+            context
+                .memory
+                .reserve(context.memory.limit().saturating_sub(1))
+                .unwrap()
+        });
+        let before_generation = index.next_generation();
+        let before_paths = index.run_paths();
+        let before_memtable = index.memtable_entries().to_vec();
+        let before_spills = context.candidate_index_spill_count();
+        let before_memory = context.memory.current();
+        let before_temp = context.temp.current();
+        let mut callbacks = 0;
+        let error = index
+            .for_each_candidate(0, &key(7), 100, 0, &mut |_| {
+                callbacks += 1;
+                Ok(())
+            })
+            .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::CorruptIndex);
+        assert_eq!(callbacks, 0);
+        assert_eq!(index.next_generation(), before_generation);
+        assert_eq!(index.run_paths(), before_paths);
+        assert_eq!(index.memtable_entries(), before_memtable.as_slice());
+        assert_eq!(context.candidate_index_spill_count(), before_spills);
+        assert_eq!(context.memory.current(), before_memory);
+        assert_eq!(context.temp.current(), before_temp);
+        drop(held);
+        drop(index);
+        assert_eq!(context.memory.current(), 0);
+        assert_eq!(context.temp.current(), 0);
+        assert!(temp_dir.path().read_dir().unwrap().next().is_none());
+    }
 }
 
 #[test]

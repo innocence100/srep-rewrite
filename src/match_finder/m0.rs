@@ -7,7 +7,7 @@ use crate::candidate_index::{CandidateIndex, IndexEntry, new_candidate_index};
 use crate::codec::{InputSpool, spool_input};
 use crate::config::CompressionConfig;
 use crate::error::{Error, Result};
-use crate::match_ir::MatchCandidate;
+use crate::match_ir::{ExactIntervalFilter, MatchCandidate};
 use crate::polynomial::polynomial_hash;
 use crate::resource::{BudgetedVec, ResourceContext};
 
@@ -22,7 +22,7 @@ const CANONICAL_KEY_RESERVATION: u64 = 128;
 /// filter suppresses the final emission of a triple that has already been
 /// emitted, preventing unbounded memory growth for highly repetitive inputs.
 /// The authoritative dedup and minimum-ordinal selection happen in
-/// `reference::canonicalize_candidates` before exact periodic validation.
+/// `candidate_validation::canonicalize_candidates` before exact periodic validation.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct CandidateKey {
     src: u64,
@@ -103,6 +103,7 @@ pub(crate) fn find_matches_m0_spooled(
     find_matches_m0_spooled_with_parameters(spool, &parameters, context, 0, hash_at_dyn)
 }
 
+#[cfg(test)]
 pub(crate) fn find_matches_m0_spooled_compact(
     spool: &InputSpool,
     config: &CompressionConfig,
@@ -124,6 +125,7 @@ pub(crate) fn find_matches_m0_spooled_compact(
         hash_at_dyn,
         &mut output,
         Some(&mut filter),
+        None,
     )?;
     Ok(output)
 }
@@ -151,10 +153,12 @@ pub(crate) fn find_matches_m0_spooled_with_parameters(
         hash_fn,
         &mut output,
         None,
+        None,
     )?;
     Ok(output)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn find_matches_m0_spooled_with_parameters_into(
     spool: &InputSpool,
     parameters: &M0Parameters,
@@ -163,6 +167,7 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
     hash_fn: fn(&mut dyn DataSource, u64, u64) -> Result<u64>,
     output: &mut BudgetedVec<MatchCandidate>,
     mut emission_filter: Option<&mut CandidateEmissionFilter>,
+    mut exact_filter: Option<&mut ExactIntervalFilter>,
 ) -> Result<()> {
     let region = parameters.region;
     if region == 0 {
@@ -218,6 +223,8 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
 
     let mut next_representative = 0usize;
     let mut ordinal = 0u64;
+    let mut last_uniform_target: Option<(u8, u64)> = None;
+    let mut last_visible_representatives: Option<usize> = None;
     for target in 0..eligible_starts {
         while next_representative < representatives.len()
             && representatives[next_representative].0 < target
@@ -236,6 +243,17 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
                 &[],
             )?)?;
             next_representative += 1;
+        }
+        let skip_uniform_target = emission_filter.is_some()
+            && last_visible_representatives == Some(next_representative)
+            && snapshot.as_ref().is_some_and(|snapshot| {
+                last_uniform_target.is_some_and(|(byte, previous)| {
+                    snapshot.byte_at(target) == Some(byte)
+                        && snapshot.same_uniform_run(previous, target, region)
+                })
+            });
+        if skip_uniform_target {
+            continue;
         }
         let hash = hash_fn(&mut source, target, region)?;
         index.for_each_candidate(
@@ -270,13 +288,28 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
                             true
                         };
                         if keep {
-                            output.push(candidate)?;
+                            if let Some(filter) = exact_filter.as_deref_mut() {
+                                filter.consider(output, candidate)?;
+                            } else {
+                                output.push(candidate)?;
+                            }
                         }
                     }
                 }
                 Ok(())
             },
         )?;
+        last_visible_representatives = Some(next_representative);
+        if emission_filter.is_some()
+            && next_representative > 0
+            && let Some(snapshot) = snapshot.as_ref()
+            && snapshot.region_is_uniform(target, region)
+            && let Some(byte) = snapshot.byte_at(target)
+        {
+            last_uniform_target = Some((byte, target));
+        } else {
+            last_uniform_target = None;
+        }
     }
     Ok(())
 }
@@ -452,5 +485,31 @@ mod tests {
         let snapshot_backed = extend_candidate(&mut source, 0, 4096, 512, Some(&snapshot)).unwrap();
 
         assert_eq!(snapshot_backed, file_backed);
+    }
+
+    #[test]
+    fn compact_uniform_run_preserves_normalized_ir() {
+        let input = [0u8; 4096];
+        let mut config = CompressionConfig::for_method(crate::config::Method::M0Rep);
+        config.min_match = 64;
+        let context = ResourceContext::with_resources(&config.resources).unwrap();
+        let spool = crate::codec::spool_input(&input[..], &config.resources, &context).unwrap();
+        let full = find_matches_m0_spooled(&spool, &config, &context).unwrap();
+        let compact = find_matches_m0_spooled_compact(&spool, &config, &context).unwrap();
+        assert!(compact.len() < full.len());
+        let full_ir = crate::match_ir::normalize_matches(
+            full.iter().copied(),
+            input.len() as u64,
+            config.min_match,
+        )
+        .unwrap();
+        let compact_ir = crate::match_ir::normalize_matches(
+            compact.iter().copied(),
+            input.len() as u64,
+            config.min_match,
+        )
+        .unwrap();
+        assert_eq!(full_ir, compact_ir);
+        assert!(compact.iter().all(|candidate| candidate.len >= 64));
     }
 }

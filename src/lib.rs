@@ -1,29 +1,32 @@
 #![forbid(unsafe_code)]
 
-//! SREP-NG version 2 library.
+//! SREP-NG version 3 library.
 //!
-//! The writer emits self-contained NG v2 archives and the reader strictly
-//! supports embedded legacy SREP v1-v4 archives. Match IR, all three reference
+//! The writer and current reader implement self-contained NG v3 archives.
+//! The reader also supports embedded legacy SREP v1-v4 archives. NG v2 is an
+//! explicitly unsupported production format.
+//! Match IR, all three reference
 //! layouts, and m0-m5 discovery use the deterministic RAM-or-spill
 //! CandidateIndex.
 //! Prototype NG v1 archives are rejected as
 //! [`ErrorKind::UnsupportedVersion`].
 
 pub mod candidate_index;
+mod candidate_validation;
 pub mod checksum;
 pub mod codec;
 pub mod config;
 pub mod dispatch;
 pub mod error;
-pub mod format;
+pub mod format_v3;
 pub mod legacy;
 pub mod match_finder;
 pub mod match_ir;
 pub mod path;
 mod polynomial;
-mod reference;
 pub mod requirement;
 pub mod resource;
+pub mod v3;
 
 pub use candidate_index::{
     CandidateIndex, HybridCandidateIndex, IndexEntry, RamCandidateIndex, ScratchHeader,

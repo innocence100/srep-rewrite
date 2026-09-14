@@ -19,7 +19,17 @@ FIXTURES = ROOT / "tests" / "fixtures" / "fidelity"
 MANIFEST = FIXTURES / "stage7-m5.json"
 CORPUS = FIXTURES / "stage7-m5-comparable.bin"
 OLD_ARCHIVE = FIXTURES / "stage7-old-m5.srep"
+DECODER_DEFAULT = ROOT / "target" / "debug" / "srep"
 EXPECTED_BINARY = "e8ca47d05ecceb7f3c5ff3fa6d4c8cdc88f17b3f3f1838e6ca06b3c0cded7b1e"
+
+
+def current_command(decoder: Path, item: dict, source: Path, archive: Path) -> list[str]:
+    """Replay the recorded compression options through the current NGv3 CLI."""
+    command = [os.fspath(decoder), *item["new_command"][1:]]
+    return [
+        arg.replace("INPUT", os.fspath(source)).replace("OUTPUT", os.fspath(archive))
+        for arg in command
+    ]
 
 
 def sha256(data: bytes) -> str:
@@ -243,7 +253,7 @@ def wrong_binary_online_test(decoder: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--decoder", type=Path, default=ROOT / "target" / "debug" / "srep")
+    parser.add_argument("--decoder", type=Path, default=DECODER_DEFAULT)
     parser.add_argument("--old-binary", type=Path)
     parser.add_argument("--metrics-binary", type=Path)
     parser.add_argument("--skip-self-tests", action="store_true", help=argparse.SUPPRESS)
@@ -273,11 +283,17 @@ def main() -> int:
         source = directory / "new-m5.bin"
         archive = directory / "new-m5.srep"
         source.write_bytes(data)
-        command = [os.fspath(args.decoder), *item["new_command"][1:]]
-        command = [arg.replace("INPUT", os.fspath(source)).replace("OUTPUT", os.fspath(archive)) for arg in command]
-        subprocess.run(command, check=True, capture_output=True)
-        if sha256(archive.read_bytes()) != item["new_result"]["archive_sha256"]:
-            raise ValueError("new archive hash mismatch")
+        subprocess.run(current_command(args.decoder, item, source, archive), check=True, capture_output=True)
+        if archive.read_bytes()[:8] != b"SREPNG3\0":
+            raise ValueError("current M5 command did not emit NGv3")
+        info_text = subprocess.run(
+            [os.fspath(args.decoder), "info", os.fspath(archive)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        if "format: SREP-NG v3" not in info_text:
+            raise ValueError("current M5 archive was not labeled NGv3")
         roundtrip(args.decoder, archive, data, item["new_result"], directory)
         metrics = args.metrics_binary or args.decoder.parent / "examples" / "stage7-m5-metrics"
         comparable = json.loads(subprocess.run([os.fspath(metrics), "m5-comparable"], check=True, capture_output=True, text=True).stdout)
@@ -310,7 +326,7 @@ def main() -> int:
             if not match or int(match.group(1)) != item["old_result"]["match_count"] or int(match.group(2)) != item["old_result"]["encoded_bytes"]:
                 raise ValueError("old online physical match metrics differ from manifest")
             print("old binary hash accepted and online reproduction matched retained archive")
-    print("validated Stage 7 M5 manifest, retained old archive, new archive, witness, tamper resistance, and round trips")
+    print("validated Stage 7 historical fixture bytes offline plus current NGv3 semantic metrics, witness, tamper resistance, and round trips; no NGv2 output compatibility claimed")
     return 0
 
 

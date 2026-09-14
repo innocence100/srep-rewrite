@@ -3,7 +3,7 @@ use std::io;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Stable error identity from the approved SREP-NG v2 specification.
+/// Stable error identity from the approved SREP-NG specification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
     InvalidConfiguration,

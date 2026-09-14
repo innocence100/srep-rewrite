@@ -3,7 +3,7 @@ use std::io::Cursor;
 use srep::{
     Checksum, CompressionConfig, ErrorKind, Layout, MatchCandidate, Method, RepConfig,
     ResourceConfig, compress_with_candidates, compress_with_context, find_matches_m3,
-    find_matches_m4, inspect_matches,
+    find_matches_m4, inspect_matches, normalize_matches,
 };
 
 fn config(method: Method) -> CompressionConfig {
@@ -391,131 +391,6 @@ fn candidate_api_uses_effective_minimum_for_overlay_only() {
     assert!(rejected.is_empty());
 }
 
-fn refresh_record_checksum(archive: &mut [u8], offset: usize, payload_len: usize) {
-    let header = srep::format::parse_archive_header(&archive[..80]).unwrap();
-    let frame: [u8; 12] = archive[offset..offset + 12].try_into().unwrap();
-    let payload = &archive[offset + 12..offset + 12 + payload_len];
-    let digest = srep::checksum::record_checksum(header.checksum, &frame, payload);
-    archive[offset + 12 + payload_len..offset + 12 + payload_len + digest.len()]
-        .copy_from_slice(&digest);
-}
-
-fn refresh_block_checksum(archive: &mut [u8], offset: usize, payload_len: usize, input: &[u8]) {
-    let header = srep::format::parse_archive_header(&archive[..80]).unwrap();
-    let frame: [u8; 12] = archive[offset..offset + 12].try_into().unwrap();
-    let payload = &archive[offset + 12..offset + 12 + payload_len];
-    let digest =
-        srep::checksum::block_checksum(header.checksum, &frame, payload, 0, 0, input).unwrap();
-    archive[offset + 12 + payload_len..offset + 12 + payload_len + digest.len()]
-        .copy_from_slice(&digest);
-}
-
-fn record_offsets(archive: &[u8]) -> Vec<(u8, usize, usize)> {
-    let header = srep::format::parse_archive_header(&archive[..80]).unwrap();
-    let mut offset = 80;
-    let mut records = Vec::new();
-    while offset + 12 <= archive.len() - 64 {
-        let kind = archive[offset];
-        let payload_len =
-            u64::from_le_bytes(archive[offset + 4..offset + 12].try_into().unwrap()) as usize;
-        records.push((kind, offset, payload_len));
-        offset += 12 + payload_len + header.checksum.width();
-    }
-    records
-}
-
-#[test]
-fn checksum_valid_match_below_effective_minimum_is_invalid_for_every_layout() {
-    let input = b"0123456789abcdefghijklmnopqrst".repeat(3);
-    let candidates = [
-        MatchCandidate {
-            src: 0,
-            dst: 30,
-            len: 30,
-            insertion_ordinal: 0,
-        },
-        MatchCandidate {
-            src: 30,
-            dst: 60,
-            len: 30,
-            insertion_ordinal: 1,
-        },
-    ];
-    for layout in [Layout::Index, Layout::Future, Layout::Io] {
-        let mut config = config(Method::M3FixedDigest);
-        config.layout = layout;
-        config.min_match = 40;
-        config.seed_size = Some(40);
-        config.rep_overlay = Some(RepConfig {
-            distance: 64,
-            min_match: 26,
-        });
-        let mut archive = Vec::new();
-        compress_with_candidates(Cursor::new(&input), &mut archive, &config, candidates).unwrap();
-        let (kind, offset, payload_len) = record_offsets(&archive)
-            .into_iter()
-            .find(|(kind, _, _)| *kind == srep::format::RECORD_DATA_BLOCK)
-            .unwrap();
-        match layout {
-            Layout::Index => {
-                let (_, index_offset, _) = record_offsets(&archive)
-                    .into_iter()
-                    .find(|(kind, _, _)| *kind == srep::format::RECORD_INDEX_SECTION)
-                    .unwrap();
-                archive[index_offset + 12 + 32 + 16..index_offset + 12 + 32 + 24]
-                    .copy_from_slice(&25u64.to_le_bytes());
-                archive[index_offset + 12 + 32 + 40..index_offset + 12 + 32 + 48]
-                    .copy_from_slice(&35u64.to_le_bytes());
-                let index_len = u64::from_le_bytes(
-                    archive[index_offset + 4..index_offset + 12]
-                        .try_into()
-                        .unwrap(),
-                ) as usize;
-                refresh_record_checksum(&mut archive, index_offset, index_len);
-            }
-            Layout::Future => {
-                archive[offset + 12 + 48 + 24..offset + 12 + 48 + 32]
-                    .copy_from_slice(&25u64.to_le_bytes());
-                refresh_block_checksum(&mut archive, offset, payload_len, &input);
-            }
-            Layout::Io => {
-                let payload_start = offset + 12;
-                let payload_end = payload_start + payload_len;
-                let mut match_positions = Vec::new();
-                let mut match_start = payload_start + 48;
-                while match_start < payload_end {
-                    if archive[match_start] == 1 {
-                        match_positions.push(match_start);
-                    }
-                    let encoded = u32::from_le_bytes(
-                        archive[match_start + 4..match_start + 8]
-                            .try_into()
-                            .unwrap(),
-                    ) as usize;
-                    match_start += encoded;
-                }
-                assert_eq!(match_positions.len(), 2);
-                archive[match_positions[0] + 32..match_positions[0] + 40]
-                    .copy_from_slice(&25u64.to_le_bytes());
-                archive[match_positions[1] + 24..match_positions[1] + 32]
-                    .copy_from_slice(&55u64.to_le_bytes());
-                archive[match_positions[1] + 32..match_positions[1] + 40]
-                    .copy_from_slice(&35u64.to_le_bytes());
-                refresh_block_checksum(&mut archive, offset, payload_len, &input);
-            }
-        }
-        let mut output = Vec::new();
-        let error = srep::decompress(archive.as_slice(), &mut output).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            ErrorKind::InvalidMatch,
-            "{kind} {layout:?}: {:?}",
-            error.context()
-        );
-        assert!(output.is_empty(), "{layout:?} published malformed output");
-    }
-}
-
 #[test]
 fn overlay_effective_minimum_accepts_rep_match_below_base_for_both_fixed_methods() {
     let seed = b"abcdefghijklmnopqrstuvwxyz";
@@ -577,6 +452,70 @@ fn overlay_effective_minimum_accepts_rep_match_below_base_for_both_fixed_methods
                 srep::decompress(archive.as_slice(), &mut output).unwrap();
                 assert_eq!(output, input);
             }
+        }
+    }
+}
+
+#[test]
+fn overlay_compact_matches_full_ir_and_archive_for_uniform_runs() {
+    let input = [0u8; 64];
+    for method in [Method::M3FixedDigest, Method::M4Reread] {
+        for (base_min, overlay_min) in [(8, 32), (32, 32), (40, 26)] {
+            let mut config = config(method);
+            config.min_match = base_min;
+            config.seed_size = Some(8);
+            config.rep_overlay = Some(RepConfig {
+                distance: 32,
+                min_match: overlay_min,
+            });
+            let context = srep::ResourceContext::with_resources(&config.resources).unwrap();
+            let full = match method {
+                Method::M3FixedDigest => {
+                    find_matches_m3(Cursor::new(input.as_slice()), &config, &context)
+                }
+                Method::M4Reread => {
+                    find_matches_m4(Cursor::new(input.as_slice()), &config, &context)
+                }
+                _ => unreachable!(),
+            }
+            .unwrap();
+            assert!(
+                full.windows(2)
+                    .all(|pair| pair[0].insertion_ordinal < pair[1].insertion_ordinal),
+                "{method:?} min={base_min}/{overlay_min}"
+            );
+            let mut compact_archive = Vec::new();
+            compress_with_context(
+                Cursor::new(input.as_slice()),
+                &mut compact_archive,
+                &config,
+                &context,
+            )
+            .unwrap();
+            let mut full_archive = Vec::new();
+            compress_with_candidates(
+                Cursor::new(input.as_slice()),
+                &mut full_archive,
+                &config,
+                full.iter().copied(),
+            )
+            .unwrap();
+            assert_eq!(
+                compact_archive, full_archive,
+                "{method:?} min={base_min}/{overlay_min}"
+            );
+            let full_ir = normalize_matches(
+                full.iter().copied(),
+                input.len() as u64,
+                base_min.min(overlay_min),
+            )
+            .unwrap();
+            let inspected = inspect_matches(compact_archive.as_slice()).unwrap();
+            assert_eq!(
+                inspected.as_slice(),
+                full_ir.as_slice(),
+                "{method:?} min={base_min}/{overlay_min}"
+            );
         }
     }
 }

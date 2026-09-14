@@ -1,5 +1,8 @@
 use std::io::{Read, Seek, SeekFrom};
 
+#[cfg(test)]
+use std::cell::Cell;
+
 use super::source::DataSource;
 use crate::codec::InputSpool;
 use crate::error::{Error, Result};
@@ -9,8 +12,96 @@ pub(crate) const INPUT_SNAPSHOT_LIMIT: u64 = 16 * 1024 * 1024;
 const COMPARE_CHUNK: usize = 4096;
 const POLY_BASE: u64 = 153_191;
 
+#[cfg(test)]
+thread_local! {
+    static TEST_SNAPSHOT_LIMIT: Cell<Option<u64>> = const { Cell::new(None) };
+    static TEST_SNAPSHOT_MEMORY_BUDGET: Cell<Option<u64>> = const { Cell::new(None) };
+    static TEST_DENY_LCE: Cell<u8> = const { Cell::new(0) };
+    static TEST_LAST_STATE: Cell<Option<TestSnapshotState>> = const { Cell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) struct TestSnapshotLimitGuard(Option<u64>);
+
+#[cfg(test)]
+impl Drop for TestSnapshotLimitGuard {
+    fn drop(&mut self) {
+        TEST_SNAPSHOT_LIMIT.with(|limit| limit.set(self.0));
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_snapshot_limit(limit: u64) -> TestSnapshotLimitGuard {
+    let previous = TEST_SNAPSHOT_LIMIT.with(|current| {
+        let previous = current.get();
+        current.set(Some(limit));
+        previous
+    });
+    TestSnapshotLimitGuard(previous)
+}
+
+#[cfg(test)]
+pub(crate) struct TestSnapshotMemoryBudgetGuard(Option<u64>);
+
+#[cfg(test)]
+impl Drop for TestSnapshotMemoryBudgetGuard {
+    fn drop(&mut self) {
+        TEST_SNAPSHOT_MEMORY_BUDGET.with(|budget| budget.set(self.0));
+    }
+}
+
+/// Reserve all but the requested amount of the context budget while building a
+/// snapshot.  This is deliberately a test-only hook: the allocations below
+/// still go through `BudgetedVec` and therefore exercise real budget denial,
+/// while the reservation is released before the finder continues.
+#[cfg(test)]
+pub(crate) fn test_snapshot_memory_budget(available: u64) -> TestSnapshotMemoryBudgetGuard {
+    let previous = TEST_SNAPSHOT_MEMORY_BUDGET.with(|budget| {
+        let previous = budget.get();
+        budget.set(Some(available));
+        previous
+    });
+    TestSnapshotMemoryBudgetGuard(previous)
+}
+
+#[cfg(test)]
+pub(crate) struct TestLceDenialGuard(u8);
+
+#[cfg(test)]
+impl Drop for TestLceDenialGuard {
+    fn drop(&mut self) {
+        TEST_DENY_LCE.with(|direction| direction.set(self.0));
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_deny_lces(forward: bool, reverse: bool) -> TestLceDenialGuard {
+    let previous = TEST_DENY_LCE.with(|current| {
+        let previous = current.get();
+        current.set(u8::from(forward) | (u8::from(reverse) << 1));
+        previous
+    });
+    TestLceDenialGuard(previous)
+}
+
+#[cfg(test)]
+pub(crate) fn test_last_snapshot_state() -> Option<TestSnapshotState> {
+    TEST_LAST_STATE.with(Cell::get)
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TestSnapshotState {
+    BytesOnly,
+    PrefixTablesOnly,
+    ForwardLceOnly,
+    ReverseLceOnly,
+    FullLce,
+}
+
 pub(crate) struct InputSnapshot {
     bytes: BudgetedVec<u8>,
+    run: Option<BudgetedVec<u32>>,
     prefixes: Option<BudgetedVec<u64>>,
     powers: Option<BudgetedVec<u64>>,
     pub(crate) forward_lce: Option<ExactLce>,
@@ -25,67 +116,195 @@ pub(crate) struct ExactLce {
 
 impl InputSnapshot {
     pub(crate) fn try_new(spool: &InputSpool, context: &ResourceContext) -> Result<Option<Self>> {
-        if spool.len > INPUT_SNAPSHOT_LIMIT {
-            return Ok(None);
-        }
-        let length = match usize::try_from(spool.len) {
-            Ok(length) => length,
-            Err(_) => return Ok(None),
-        };
-        let mut bytes = match BudgetedVec::with_capacity(length, &context.memory) {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => {
+        #[cfg(test)]
+        let _test_memory_reservation = TEST_SNAPSHOT_MEMORY_BUDGET.with(|budget| {
+            budget
+                .get()
+                .map(|available| {
+                    context
+                        .memory
+                        .reserve(context.memory.limit().saturating_sub(available))
+                })
+                .transpose()
+        })?;
+        let result = (|| -> Result<Option<Self>> {
+            let limit = {
+                #[cfg(test)]
+                {
+                    TEST_SNAPSHOT_LIMIT.with(|limit| limit.get().unwrap_or(INPUT_SNAPSHOT_LIMIT))
+                }
+                #[cfg(not(test))]
+                {
+                    INPUT_SNAPSHOT_LIMIT
+                }
+            };
+            if spool.len > limit {
                 return Ok(None);
             }
-            Err(error) => return Err(error),
-        };
-        bytes.resize(length, 0)?;
-        let mut file = spool.file.try_clone().map_err(Error::temp_storage)?;
-        file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
-        file.read_exact(bytes.as_mut_slice())
-            .map_err(Error::temp_storage)?;
-        let (prefixes, powers) = match prefix_tables(bytes.as_slice(), context) {
-            Ok((prefixes, powers)) => (Some(prefixes), Some(powers)),
-            Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => {
-                (None, None)
-            }
-            Err(error) => return Err(error),
-        };
-        let forward_lce = match ExactLce::try_new(bytes.as_slice(), context) {
-            Ok(value) => Some(value),
-            Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => None,
-            Err(error) => return Err(error),
-        };
-        let reverse_bytes = match BudgetedVec::with_capacity(length, &context.memory) {
-            Ok(mut reverse) => {
-                reverse.resize(length, 0)?;
-                for (index, byte) in bytes.iter().rev().enumerate() {
-                    reverse[index] = *byte;
+            let length = match usize::try_from(spool.len) {
+                Ok(length) => length,
+                Err(_) => return Ok(None),
+            };
+            let mut bytes = match BudgetedVec::with_capacity(length, &context.memory) {
+                Ok(bytes) => bytes,
+                Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => {
+                    return Ok(None);
                 }
-                Some(reverse)
-            }
-            Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => None,
-            Err(error) => return Err(error),
-        };
-        let reverse_lce = match reverse_bytes.as_ref() {
-            Some(reverse) => match ExactLce::try_new(reverse.as_slice(), context) {
+                Err(error) => return Err(error),
+            };
+            bytes.resize(length, 0)?;
+            let mut file = spool.file.try_clone().map_err(Error::temp_storage)?;
+            file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
+            file.read_exact(bytes.as_mut_slice())
+                .map_err(Error::temp_storage)?;
+            let run = match forward_run_table(bytes.as_slice(), context) {
+                Ok(run) => Some(run),
+                Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => None,
+                Err(error) => return Err(error),
+            };
+            let (prefixes, powers) = match prefix_tables(bytes.as_slice(), context) {
+                Ok((prefixes, powers)) => (Some(prefixes), Some(powers)),
+                Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => {
+                    (None, None)
+                }
+                Err(error) => return Err(error),
+            };
+            #[cfg(test)]
+            let deny_forward = TEST_DENY_LCE.with(|direction| direction.get() & 1 != 0);
+            #[cfg(test)]
+            let forward_denial = deny_forward.then(|| Self::reserve_for_test_denial(context));
+            let forward_lce = match ExactLce::try_new(bytes.as_slice(), context) {
                 Ok(value) => Some(value),
                 Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => None,
                 Err(error) => return Err(error),
-            },
-            None => None,
-        };
-        Ok(Some(Self {
-            bytes,
-            prefixes,
-            powers,
-            forward_lce,
-            reverse_lce,
-        }))
+            };
+            #[cfg(test)]
+            drop(forward_denial);
+            let reverse_bytes = match BudgetedVec::with_capacity(length, &context.memory) {
+                Ok(mut reverse) => {
+                    reverse.resize(length, 0)?;
+                    for (index, byte) in bytes.iter().rev().enumerate() {
+                        reverse[index] = *byte;
+                    }
+                    Some(reverse)
+                }
+                Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => None,
+                Err(error) => return Err(error),
+            };
+            #[cfg(test)]
+            let deny_reverse = TEST_DENY_LCE.with(|direction| direction.get() & 2 != 0);
+            #[cfg(test)]
+            let reverse_denial = deny_reverse.then(|| Self::reserve_for_test_denial(context));
+            let reverse_lce = match reverse_bytes.as_ref() {
+                Some(reverse) => match ExactLce::try_new(reverse.as_slice(), context) {
+                    Ok(value) => Some(value),
+                    Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => {
+                        None
+                    }
+                    Err(error) => return Err(error),
+                },
+                None => None,
+            };
+            #[cfg(test)]
+            drop(reverse_denial);
+            let snapshot = Self {
+                bytes,
+                run,
+                prefixes,
+                powers,
+                forward_lce,
+                reverse_lce,
+            };
+            #[cfg(test)]
+            TEST_LAST_STATE.with(|state| state.set(Some(snapshot.test_state())));
+            Ok(Some(snapshot))
+        })();
+        #[cfg(test)]
+        drop(_test_memory_reservation);
+        result
+    }
+
+    #[cfg(test)]
+    fn reserve_for_test_denial(context: &ResourceContext) -> crate::resource::Reservation {
+        let remaining = context
+            .memory
+            .limit()
+            .saturating_sub(context.memory.current());
+        context.memory.reserve(remaining).unwrap_or_else(|_| {
+            // If the budget is already exhausted, the next allocation is
+            // already denied; a zero-sized reservation keeps the helper's
+            // lifetime and cleanup semantics uniform.
+            context
+                .memory
+                .reserve(0)
+                .expect("zero reservation must succeed")
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_state(&self) -> TestSnapshotState {
+        match (
+            self.prefixes.is_some(),
+            self.forward_lce.is_some(),
+            self.reverse_lce.is_some(),
+        ) {
+            (false, false, false) => TestSnapshotState::BytesOnly,
+            (true, false, false) => TestSnapshotState::PrefixTablesOnly,
+            (false, true, false) | (true, true, false) => TestSnapshotState::ForwardLceOnly,
+            (false, false, true) | (true, false, true) => TestSnapshotState::ReverseLceOnly,
+            (false, true, true) | (true, true, true) => TestSnapshotState::FullLce,
+        }
     }
 
     pub(crate) fn as_slice(&self) -> &[u8] {
         self.bytes.as_slice()
+    }
+
+    pub(crate) fn byte_at(&self, position: u64) -> Option<u8> {
+        let index = usize::try_from(position).ok()?;
+        self.bytes.get(index).copied()
+    }
+
+    /// Consecutive equal bytes starting at `position`, including that byte.
+    pub(crate) fn forward_run(&self, position: u64) -> Option<u64> {
+        let index = usize::try_from(position).ok()?;
+        if let Some(run) = self.run.as_ref() {
+            return run.get(index).copied().map(u64::from);
+        }
+        let bytes = self.bytes.as_slice();
+        let first = *bytes.get(index)?;
+        Some(
+            bytes[index..]
+                .iter()
+                .take_while(|byte| **byte == first)
+                .count() as u64,
+        )
+    }
+
+    /// True when `[position, position + length)` is a single-byte run.
+    pub(crate) fn region_is_uniform(&self, position: u64, length: u64) -> bool {
+        length > 0 && self.forward_run(position).is_some_and(|run| run >= length)
+    }
+
+    /// True when `previous` and `position` sit in one uniform run that covers
+    /// both `length`-byte region windows.
+    pub(crate) fn same_uniform_run(&self, previous: u64, position: u64, length: u64) -> bool {
+        if position < previous || length == 0 {
+            return false;
+        }
+        let Some(byte) = self.byte_at(previous) else {
+            return false;
+        };
+        if self.byte_at(position) != Some(byte) {
+            return false;
+        }
+        if !self.region_is_uniform(previous, length) || !self.region_is_uniform(position, length) {
+            return false;
+        }
+        let span = position
+            .checked_add(length)
+            .and_then(|end| end.checked_sub(previous));
+        span.is_some_and(|span| self.forward_run(previous).is_some_and(|run| run >= span))
     }
 
     pub(crate) fn polynomial_hash_at(&self, position: u64, length: u64) -> Option<u64> {
@@ -126,6 +345,21 @@ impl InputSnapshot {
         }
         Some(self.bytes.as_slice()[start..end] == self.bytes.as_slice()[other..other_end])
     }
+}
+
+fn forward_run_table(bytes: &[u8], context: &ResourceContext) -> Result<BudgetedVec<u32>> {
+    let mut run = BudgetedVec::with_capacity(bytes.len(), &context.memory)?;
+    run.resize(bytes.len(), 0)?;
+    let mut remaining = 0u32;
+    for index in (0..bytes.len()).rev() {
+        remaining = if index + 1 < bytes.len() && bytes[index] == bytes[index + 1] {
+            remaining.saturating_add(1)
+        } else {
+            1
+        };
+        run[index] = remaining;
+    }
+    Ok(run)
 }
 
 fn prefix_tables(
@@ -697,4 +931,38 @@ fn read_periodic_bytes(
         offset = 0;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+    use crate::codec::spool_input;
+    use crate::config::ResourceConfig;
+    use crate::resource::ResourceContext;
+
+    #[test]
+    fn resource_fallback_has_no_snapshot_prefix_or_lce_path() {
+        let input = b"0123456789abcdef".repeat(64);
+        let resources = ResourceConfig::default();
+        let context = ResourceContext::from_limits(512, resources.temp_limit);
+        let spool = spool_input(Cursor::new(&input), &resources, &context).unwrap();
+        assert!(InputSnapshot::try_new(&spool, &context).unwrap().is_none());
+
+        let context = ResourceContext::from_limits(2 * 1024, resources.temp_limit);
+        let spool = spool_input(Cursor::new(&input), &resources, &context).unwrap();
+        let snapshot = InputSnapshot::try_new(&spool, &context).unwrap().unwrap();
+        assert!(snapshot.prefixes.is_none());
+        assert!(snapshot.forward_lce.is_none());
+        assert!(snapshot.reverse_lce.is_none());
+
+        let context = ResourceContext::from_limits(32 * 1024, resources.temp_limit);
+        let spool = spool_input(Cursor::new(&input), &resources, &context).unwrap();
+        let snapshot = InputSnapshot::try_new(&spool, &context).unwrap().unwrap();
+        assert!(snapshot.prefixes.is_some());
+        assert!(snapshot.powers.is_some());
+        assert!(snapshot.forward_lce.is_none());
+        assert!(snapshot.reverse_lce.is_none());
+    }
 }

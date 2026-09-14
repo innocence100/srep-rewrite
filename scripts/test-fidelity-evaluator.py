@@ -21,6 +21,10 @@ import fidelity  # noqa: E402
 
 
 TRUSTED_ROOT = Path("/tmp/opencode")
+# The descendant-liveness assertions below intentionally use Linux /proc.
+# Fidelity evaluation currently runs these subprocess tests on Linux; native
+# Windows/macOS CI does not claim this Linux-specific evidence.
+LINUX_PROCESS_TESTS = os.name == "posix" and Path("/proc").is_dir()
 FAKE_SREP = r"""#!/usr/bin/env python3
 import os
 import pathlib
@@ -54,6 +58,18 @@ if sleep_marker == f"{sample_id}:{method}:{stage}":
         f"{os.getpid()} {child.pid}\n", encoding="utf-8"
     )
     time.sleep(30)
+
+resistant_marker = os.environ.get("SREP_EXIT_WITH_RESISTANT_CHILD", "")
+if resistant_marker == f"{sample_id}:{method}:{stage}":
+    child = subprocess.Popen([
+        sys.executable,
+        "-c",
+        "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)",
+    ])
+    pathlib.Path(os.environ["SREP_CHILD_PID"]).write_text(
+        f"{os.getpid()} {child.pid}\n", encoding="utf-8"
+    )
+    raise SystemExit(0)
 
 if command == "compress":
     archive.write_bytes(source.read_bytes())
@@ -147,6 +163,19 @@ def row_count(report: dict[str, object]) -> int:
 
 def load_report(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def pid_is_live(pid: int) -> bool:
+    """Return whether Linux still reports a runnable/non-zombie process."""
+    status = Path(f"/proc/{pid}/status")
+    try:
+        state_line = next(
+            line for line in status.read_text(encoding="utf-8").splitlines()
+            if line.startswith("State:")
+        )
+    except (FileNotFoundError, StopIteration):
+        return False
+    return not state_line.split(None, 2)[1].startswith("Z")
 
 
 def patched_evaluate(monkey: dict[str, object]) -> unittest.mock._patch:
@@ -285,6 +314,8 @@ def test_midrun_failure_persists_incomplete_report(directory: Path) -> None:
 
 
 def test_timeout_reaps_process_group(directory: Path) -> None:
+    if not LINUX_PROCESS_TESTS:
+        return
     corpus = tiny_corpus()
     baseline = tiny_baseline(corpus)
     binary = install_fake_binary(directory)
@@ -306,11 +337,11 @@ def test_timeout_reaps_process_group(directory: Path) -> None:
     while time.time() < deadline:
         if child_pid_path.exists():
             pids = [int(value) for value in child_pid_path.read_text(encoding="utf-8").split()]
-            if pids and all(not Path(f"/proc/{pid}").exists() for pid in pids):
+            if pids and all(not pid_is_live(pid) for pid in pids):
                 break
         time.sleep(0.05)
     assert pids, "timed command never recorded its process group"
-    living = [pid for pid in pids if Path(f"/proc/{pid}").exists()]
+    living = [pid for pid in pids if pid_is_live(pid)]
     assert not living, f"timeout left live processes: {living}"
     report = load_report(report_path)
     assert report["complete"] is False
@@ -324,6 +355,8 @@ def test_timeout_reaps_process_group(directory: Path) -> None:
 
 
 def test_run_command_timeout_kills_grandchildren(directory: Path) -> None:
+    if not LINUX_PROCESS_TESTS:
+        return
     script = directory / "sleeper.py"
     pid_file = directory / "pids"
     script.write_text(
@@ -350,12 +383,95 @@ def test_run_command_timeout_kills_grandchildren(directory: Path) -> None:
     while time.time() < deadline:
         if pid_file.exists():
             pids = [int(value) for value in pid_file.read_text(encoding="utf-8").split()]
-            if pids and all(not Path(f"/proc/{pid}").exists() for pid in pids):
+            if pids and all(not pid_is_live(pid) for pid in pids):
                 break
         time.sleep(0.05)
     assert pids
-    living = [pid for pid in pids if Path(f"/proc/{pid}").exists()]
+    living = [pid for pid in pids if pid_is_live(pid)]
     assert not living, f"grandchild survived timeout: {living}"
+
+
+def test_timeout_kills_devnull_grandchild_after_leader_exit(directory: Path) -> None:
+    if not LINUX_PROCESS_TESTS:
+        return
+    script = directory / "devnull-sleeper.py"
+    pid_file = directory / "devnull-pids"
+    script.write_text(
+        "import os, signal, subprocess, sys, time\n"
+        "child = subprocess.Popen([sys.executable, '-c', "
+        "'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'], "
+        "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        "open(sys.argv[1], 'w', encoding='utf-8').write(f'{os.getpid()} {child.pid}\\n')\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    try:
+        fidelity.run_command(
+            [sys.executable, os.fspath(script), os.fspath(pid_file)],
+            timeout=0.3,
+            check=True,
+            capture_output=True,
+        )
+    except fidelity.CommandTimeoutError:
+        pass
+    else:
+        raise AssertionError("devnull sleeper was not timed out")
+    deadline = time.time() + 5
+    pids: list[int] = []
+    while time.time() < deadline:
+        if pid_file.exists():
+            try:
+                pids = [int(value) for value in pid_file.read_text(encoding="utf-8").split()]
+            except ValueError:
+                pids = []
+            if pids and all(not pid_is_live(pid) for pid in pids):
+                break
+        time.sleep(0.05)
+    assert pids, "devnull command never recorded its process group"
+    living = [pid for pid in pids if pid_is_live(pid)]
+    assert not living, f"devnull timeout left live processes: {living}"
+
+
+def test_timeout_reaps_group_after_leader_exit(directory: Path) -> None:
+    if not LINUX_PROCESS_TESTS:
+        return
+    corpus = tiny_corpus()
+    baseline = tiny_baseline(corpus)
+    binary = install_fake_binary(directory)
+    report_path = directory / "leader-exited.json"
+    child_pid_path = directory / "leader-exited-pids"
+    env = os.environ.copy()
+    env["SREP_EXIT_WITH_RESISTANT_CHILD"] = "fidelity-v1-01:m0:compress"
+    env["SREP_CHILD_PID"] = os.fspath(child_pid_path)
+    started = time.monotonic()
+    with patched_evaluate({"corpus": corpus, "baseline": baseline}):
+        with unittest.mock.patch.dict(os.environ, env, clear=False):
+            try:
+                fidelity.evaluate(evaluate_args(binary, report_path, timeout=0.3))
+            except fidelity.CommandTimeoutError as error:
+                assert error.timeout == 0.3
+            else:
+                raise AssertionError("leader-exited pipe holder did not time out")
+    assert time.monotonic() - started < 6, "timeout cleanup was not bounded"
+    deadline = time.time() + 5
+    pids: list[int] = []
+    while time.time() < deadline:
+        if child_pid_path.exists():
+            pids = [int(value) for value in child_pid_path.read_text(encoding="utf-8").split()]
+            if pids and all(not pid_is_live(pid) for pid in pids):
+                break
+        time.sleep(0.05)
+    assert pids, "leader-exited command never recorded its process group"
+    living = [pid for pid in pids if pid_is_live(pid)]
+    assert not living, f"leader-exited timeout left live processes: {living}"
+    report = load_report(report_path)
+    assert report["complete"] is False
+    assert report["pass"] is False
+    assert report["samples"] == []
+    assert report["error"]["stage"] == "compress"
+    assert report["error"]["sample"] == "fidelity-v1-01"
+    assert report["error"]["method"] == "m0"
+    assert "timed out" in report["error"]["error"]
 
 
 def expected_summary(rows: list[dict[str, object]]) -> dict[str, object]:
@@ -491,6 +607,10 @@ def main() -> int:
         print("test_timeout_reaps_process_group: passed")
         test_run_command_timeout_kills_grandchildren(directory)
         print("test_run_command_timeout_kills_grandchildren: passed")
+        test_timeout_kills_devnull_grandchild_after_leader_exit(directory)
+        print("test_timeout_kills_devnull_grandchild_after_leader_exit: passed")
+        test_timeout_reaps_group_after_leader_exit(directory)
+        print("test_timeout_reaps_group_after_leader_exit: passed")
         test_validation_failure_is_nonzero_incomplete(directory)
         print("test_validation_failure_is_nonzero_incomplete: passed")
     print("fidelity evaluator tests: PASS")

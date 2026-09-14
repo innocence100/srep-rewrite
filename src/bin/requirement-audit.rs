@@ -27,7 +27,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             None => return Err("option is not valid UTF-8".into()),
         }
     }
-    let count = audit_repository(&root, mode)?;
-    println!("validated {count} extracted requirements");
+    let counts = audit_repository(&root, mode)?;
+    println!(
+        "{} extracted; {} active; {} retired historical",
+        counts.extracted, counts.active, counts.retired
+    );
     Ok(())
 }

@@ -1,13 +1,17 @@
 use std::io::Read;
 
 use crate::error::{Error, Result};
-use crate::format::{
-    HEADER_LEN, LEGACY_SIGNATURE, NG_V2_MAGIC, PROTOTYPE_V1_MAGIC, parse_archive_header,
+use crate::format_v3::{
+    HEADER_LEN as V3_HEADER_LEN, NG_V3_MAGIC, parse_archive_header as parse_v3_header,
 };
+
+const NG_V2_MAGIC: [u8; 8] = *b"SREPNG2\0";
+const PROTOTYPE_V1_MAGIC: [u8; 8] = *b"SREPNG\0\x01";
+const LEGACY_SIGNATURE: [u8; 8] = [0x17, 0x18, 0x35, 0x26, 0x53, 0x52, 0x45, 0x50];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ArchiveKind {
-    NgV2,
+    NgV3,
     PrototypeV1,
     Legacy,
 }
@@ -16,7 +20,10 @@ pub fn classify_prefix(prefix: &[u8]) -> Result<ArchiveKind> {
     if prefix.len() >= 8 {
         let magic: [u8; 8] = prefix[..8].try_into().expect("prefix length");
         if magic == NG_V2_MAGIC {
-            return Ok(ArchiveKind::NgV2);
+            return Err(Error::unsupported_version("SREP-NG v2 is not supported"));
+        }
+        if magic == NG_V3_MAGIC {
+            return Ok(ArchiveKind::NgV3);
         }
         if magic == PROTOTYPE_V1_MAGIC || magic.starts_with(b"SREPNG\0") {
             return Err(Error::unsupported_version(
@@ -30,7 +37,7 @@ pub fn classify_prefix(prefix: &[u8]) -> Result<ArchiveKind> {
             return Err(Error::corrupt_header("invalid legacy signature words"));
         }
         return Err(Error::corrupt_header(
-            "unknown magic (not SREP-NG v2 or legacy SREP)",
+            "unknown magic (not SREP-NG v3 or legacy SREP)",
         ));
     }
     if prefix.is_empty() {
@@ -38,13 +45,14 @@ pub fn classify_prefix(prefix: &[u8]) -> Result<ArchiveKind> {
     }
     if NG_V2_MAGIC.starts_with(prefix)
         || PROTOTYPE_V1_MAGIC.starts_with(prefix)
+        || NG_V3_MAGIC.starts_with(prefix)
         || LEGACY_SIGNATURE.starts_with(prefix)
         || b"SREPNG\0".starts_with(prefix)
     {
         return Err(Error::truncated("truncated archive magic"));
     }
     Err(Error::corrupt_header(
-        "unknown magic (not SREP-NG v2 or legacy SREP)",
+        "unknown magic (not SREP-NG v3 or legacy SREP)",
     ))
 }
 
@@ -62,20 +70,16 @@ pub fn read_and_classify<R: Read>(reader: &mut R) -> Result<(ArchiveKind, Vec<u8
         }
     }
     match classify_prefix(&magic)? {
-        ArchiveKind::NgV2 => {
-            let mut header = vec![0u8; HEADER_LEN];
+        // A complete NG v2 magic was rejected above, before any header bytes
+        // are consumed or copied to an output stream.
+        ArchiveKind::NgV3 => {
+            let mut header = vec![0u8; V3_HEADER_LEN];
             header[..8].copy_from_slice(&magic);
             reader
                 .read_exact(&mut header[8..])
-                .map_err(|error| Error::map_eof(error, "truncated NG v2 archive header"))?;
-            let parsed = parse_archive_header(&header)?;
-            if parsed.version != 2 {
-                return Err(Error::unsupported_version(format!(
-                    "SREP-NG version {} is not supported",
-                    parsed.version
-                )));
-            }
-            Ok((ArchiveKind::NgV2, header))
+                .map_err(|error| Error::map_eof(error, "truncated NG v3 archive header"))?;
+            parse_v3_header(&header)?;
+            Ok((ArchiveKind::NgV3, header))
         }
         ArchiveKind::PrototypeV1 => Err(Error::unsupported_version(
             "experimental SREP-NG v1 is not supported",
@@ -126,6 +130,15 @@ mod tests {
     }
 
     #[test]
+    fn ng_v2_magic_is_unsupported_without_header_parsing() {
+        let mut input = NG_V2_MAGIC.to_vec();
+        input.extend_from_slice(&[0xff; 80]);
+        let error = read_and_classify(&mut input.as_slice()).unwrap_err();
+        assert_eq!(error.kind(), crate::error::ErrorKind::UnsupportedVersion);
+        assert_eq!(error.message_id(), "SREP_E_UNSUPPORTED_VERSION");
+    }
+
+    #[test]
     fn legacy_signature_is_recognized_and_header_is_returned() {
         assert_eq!(
             classify_prefix(&LEGACY_SIGNATURE).unwrap(),
@@ -142,5 +155,22 @@ mod tests {
     fn truncated_known_magic_is_truncated() {
         let error = classify_prefix(b"SREPNG").unwrap_err();
         assert_eq!(error.code(), 7);
+    }
+
+    #[test]
+    fn v3_signature_is_recognized_and_header_is_returned() {
+        let mut bytes = NG_V3_MAGIC.to_vec();
+        bytes.resize(V3_HEADER_LEN, 0);
+        bytes[8] = 3;
+        bytes[10] = 1;
+        bytes[11] = 1;
+        bytes[12] = 1;
+        bytes[16..24].copy_from_slice(&1024u64.to_le_bytes());
+        bytes[24..32].copy_from_slice(&32u64.to_le_bytes());
+        bytes[32..40].copy_from_slice(&48u64.to_le_bytes());
+        bytes[40..48].copy_from_slice(&4096u64.to_le_bytes());
+        let (kind, header) = read_and_classify(&mut bytes.as_slice()).unwrap();
+        assert_eq!(kind, ArchiveKind::NgV3);
+        assert_eq!(header.len(), V3_HEADER_LEN);
     }
 }

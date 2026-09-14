@@ -173,6 +173,14 @@ pub struct BudgetedVec<T> {
     reservation: Reservation,
 }
 
+/// Owning iterator that keeps the source allocation charged until it is
+/// dropped. The iterator field comes first so its allocation is released
+/// before the reservation.
+pub struct BudgetedVecIntoIter<T> {
+    iter: std::vec::IntoIter<T>,
+    _reservation: Reservation,
+}
+
 impl<T> std::fmt::Debug for BudgetedVec<T>
 where
     T: std::fmt::Debug,
@@ -407,6 +415,44 @@ impl<'a, T> IntoIterator for &'a BudgetedVec<T> {
     }
 }
 
+impl<T> IntoIterator for BudgetedVec<T> {
+    type Item = T;
+    type IntoIter = BudgetedVecIntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let Self {
+            data,
+            budget: _,
+            reservation,
+        } = self;
+        BudgetedVecIntoIter {
+            iter: data.into_iter(),
+            _reservation: reservation,
+        }
+    }
+}
+
+impl<T> Iterator for BudgetedVecIntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T> DoubleEndedIterator for BudgetedVecIntoIter<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back()
+    }
+}
+
+impl<T> ExactSizeIterator for BudgetedVecIntoIter<T> {}
+impl<T> std::iter::FusedIterator for BudgetedVecIntoIter<T> {}
+
 impl<T> Index<usize> for BudgetedVec<T> {
     type Output = T;
 
@@ -543,6 +589,25 @@ mod tests {
         assert_eq!(budget.high_water(), 9);
         assert_eq!(budget.current(), 9);
         drop(second);
+    }
+
+    #[test]
+    fn owned_iterator_keeps_allocation_charged_until_drop() {
+        let budget = MemoryBudget::new(64);
+        let mut values = BudgetedVec::with_capacity(4, &budget).unwrap();
+        values.resize(4, 0u64).unwrap();
+        assert_eq!(budget.current(), 32);
+        let mut iterator = values.into_iter();
+        assert_eq!(iterator.next(), Some(0));
+        assert!(budget.reserve(33).is_err());
+        assert_eq!(iterator.next(), Some(0));
+        assert_eq!(iterator.next(), Some(0));
+        assert_eq!(iterator.next(), Some(0));
+        assert_eq!(iterator.next(), None);
+        assert!(budget.reserve(33).is_err());
+        drop(iterator);
+        assert_eq!(budget.current(), 0);
+        assert!(budget.reserve(32).is_ok());
     }
 }
 
