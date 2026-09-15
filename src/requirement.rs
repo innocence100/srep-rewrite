@@ -1363,7 +1363,9 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     }
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len() / 2);
-    for pair in bytes.chunks_exact(2) {
+    let (pairs, remainder) = bytes.as_chunks::<2>();
+    debug_assert!(remainder.is_empty());
+    for pair in pairs {
         let high = hex_digit(pair[0]).ok_or("canonical payload contains non-hex data")?;
         let low = hex_digit(pair[1]).ok_or("canonical payload contains non-hex data")?;
         decoded.push((high << 4) | low);
