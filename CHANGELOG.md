@@ -1,6 +1,47 @@
 # Changelog
 
+All notable changes to this project are documented here. The 0.1.0 preview is
+still unreleased: a published version heading will be added only when the
+release integrator has confirmed the artifact and its required evidence.
+
 ## Unreleased
+
+- Prepared the limited SREP-NG software 0.1.0 preview around the current
+  **NGv3** archive format. NGv3 is the read/write format; historical
+  SuperREP v1–v4 archives remain embedded read-only inputs.
+- Retired NGv1 and NGv2 are rejected as `UnsupportedVersion`. The project does
+  not write or promise compatibility with either retired NG format, and split
+  indexes remain unsupported.
+- The CLI's agreed release interface includes `--version`/`-V` and help for
+  `--seed-size` and `--target-chunk`; the default compression method is m3.
+- The Linux release package is scoped to
+  `srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`. Its archive-root contents
+  (`README.md`, `CHANGELOG.md`, and the other contracted files) and adjacent
+  `SHA256SUMS` verification procedure are documented in the README.
+- Added release guidance to back up originals, run archive checks, and compare
+  decompressed output before removing source data. The default m3 matcher may
+  require substantial RAM and temporary disk on large inputs.
+- Prior native CI evidence at commit `8dca8bed` (Actions run
+  `34926545492`) remains **source-validation** evidence for that commit only.
+  It is not evidence that a 0.1.0 artifact has been packaged or published.
+  The retained m1 result used a 258 MiB input and included a match-distance
+  witness greater than 256 MiB; it completed in 17.57 seconds. It is a finder
+  witness, not full round-trip evidence or a default-m3 performance result.
+- The default-m3 Linux release-binary comparison passed (258 MiB deterministic
+  mix; `info` reported NGv3 / m3 / index / xxh3; SHA-256 and byte compare
+  matched). That is a correctness round trip, not a ratio or performance
+  claim. The 72-sample fidelity gate remains deferred until after publication.
+- The Linux x86_64 preview binary is dynamically linked and observed GNU libc
+  symbol versions up to **GLIBC_2.30**. That is a runtime symbol-version bound,
+  not a distro package name. Exact checksums live in `SHA256SUMS` and package
+  `NOTICES`, not in this changelog.
+
+## Historical development notes (retained from 8dca8bed)
+
+The bullets below are the pre-0.1.0 `Unreleased` notes as of commit
+`8dca8bedc4cd53e268f8f0998871ca3670a497e7`. They are **not** current 0.1.0
+claims. Some describe the then-current NG v2 writer, which has since been
+retired; current software writes NGv3 only.
 
 - Raised the crate MSRV from 1.85 to 1.88.0. The source uses `if let`
   chains (`src/config.rs`, `src/reference.rs`), which stabilized in
@@ -48,7 +89,6 @@
 - Added strict embedded legacy `.srep` v1-v4 read support. New compression
   continues to emit only NG v2; split indexes and match generation remain
   deferred.
-
 - Round-2 review fixes: shared working-memory reservations now cover metadata
   and live block buffers; DataBlock structure is checked from its stack header
   before payload allocation; and release smoke coverage was expanded.

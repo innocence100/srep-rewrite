@@ -61,6 +61,38 @@ They do not compare current NGv3 bytes or sizes to retired NGv2 pins. Retained
 historical NGv2 bytes are checked offline for their frozen hashes, headers, and
 provenance only. No NGv2 compatibility claim is made.
 
-Native Windows/macOS builds and final GitHub Actions evidence remain platform
-gates; Linux cross-compilation is not a substitute. The true 72-sample fidelity
-gate and independent final reviewer approval remain separate acceptance gates.
+The 0.1.0 package contract is limited to the Linux x86_64 glibc artifact
+`srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`. Its package root must contain
+`srep`, `LICENSE`, `THIRD_PARTY.md`, `THIRD_PARTY.audit`, `README.md`,
+`CHANGELOG.md`, and `NOTICES`; `SHA256SUMS` is external to the tarball. The
+Linux preview binary is dynamically linked and observed GNU libc symbol
+versions up to GLIBC_2.30 (a runtime symbol-version bound, not a distro
+package name). Exact checksums are in `NOTICES` and `SHA256SUMS`. Windows and
+macOS binaries are optional and are not promised by this preview.
+
+Prior CI evidence at commit
+[`8dca8be`](https://github.com/innocence100/srep-rewrite/actions/runs/34926545492)
+covered six native jobs: Linux, Windows MSVC, and macOS ARM64 at stable and
+Rust 1.88. This is source-validation evidence for that commit, not new Linux
+artifact evidence. The retained m1 result used a 258 MiB input and included a
+repeated block whose match-distance witness was greater than 256 MiB; it
+completed in 17.57 seconds. It is not full round-trip evidence and is not
+default-m3 performance evidence.
+
+The default-m3 Linux release-binary comparison **passed** (preview binary
+content SHA-256
+`d389da46dfa25c4736303a9b0523be9c71333db79ff13744d23cdf521d8d1822` at the
+time of that run; confirm the shipped file against `NOTICES` / `SHA256SUMS`).
+Recorded facts:
+
+- recipe `repeat-1mib-separated-256mib-unique-v1`, 270532608 bytes, not sparse
+- input/output SHA-256 `c6c2c4a0735a006faf10ffec7dce05ecd23366a5da071f5d5dfdb3b0eb38f0a8`
+- CLI: `srep compress --temp-dir … INPUT ARCHIVE` (no method/layout/checksum override), then `info`, `test`, `decompress --temp-dir …`, `cmp`
+- `info`: format `SREP-NG v3`, method `m3`, layout `index`, checksum `xxh3`, block size 8388608, min-match 512, 33 blocks, 1 semantic match covering 1048576 bytes
+- step exit codes all 0; compress 9286.37 s, info 8.33 s, test 8.40 s, decompress 9.65 s, cmp 0.18 s (raw timings, not a performance claim)
+- step record retained in the integration evidence workspace
+
+The 72-sample fidelity run is intentionally deferred until **after
+publication**; no ratio or performance parity claim is authorized. Native
+Windows/macOS packages remain omitted. GitHub tag/Release upload remains an
+external handoff.

@@ -22,10 +22,10 @@ for reproducibility. The project uses these dependency crates:
   identity. License: Unlicense/MIT. Upstream:
   <https://github.com/BurntSushi/same-file>.
 - `twox-hash` 2.1.4 — XXH3-128 with the official default secret and seed zero,
-  features `std` and `xxhash3_128`, default features disabled. Used for NG v2
+  features `std` and `xxhash3_128`, default features disabled. Used for NGv3
   checksum ID 1. License: MIT. Upstream:
   <https://github.com/shepmaster/twox-hash>.
-- `blake3` 1.8.7 — BLAKE3-256 for NG v2 checksum ID 2. License: CC0-1.0 OR
+- `blake3` 1.8.7 — BLAKE3-256 for NGv3 checksum ID 2. License: CC0-1.0 OR
   Apache-2.0 OR Apache-2.0 WITH LLVM-exception. Upstream:
   <https://github.com/BLAKE3-team/BLAKE3>.
 - `tempfile` 3.27.0 — safe exclusive private temporary files for input/output
@@ -77,8 +77,14 @@ Cargo's lockfile is authoritative for all transitive versions and checksums.
   <https://github.com/sunfishcode/linux-raw-sys>.
 - `once_cell` 1.21.4 — transitive of `tempfile`, one-time initialization.
   License: MIT OR Apache-2.0. Upstream: <https://github.com/matklad/once_cell>.
-- `r-efi` 6.0.0 — transitive of `getrandom`, EFI bindings. License: MIT OR
-  Apache-2.0 OR LGPL-2.1-or-later. Upstream: <https://github.com/r-efi/r-efi>.
+- `r-efi` 6.0.0 — optional `getrandom` UEFI backend (`cfg(all(target_os =
+  "uefi", getrandom_backend = "efi_rng"))`); not linked into the Linux
+  `x86_64-unknown-linux-gnu` candidate. The published crate has no `LICENSE*`
+  file; license grants and copyright are in `AUTHORS`. This Linux package does
+  not redistribute `r-efi` object code. The SPDX map is an attribution
+  checklist, not a certification that every legal requirement is satisfied.
+  License: MIT OR Apache-2.0 OR LGPL-2.1-or-later. Upstream:
+  <https://github.com/r-efi/r-efi>.
 - `rustix` 1.1.4 — transitive of `tempfile`, safe system APIs. License:
   Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT. Upstream:
   <https://github.com/bytecodealliance/rustix>.

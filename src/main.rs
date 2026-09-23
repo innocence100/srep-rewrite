@@ -34,12 +34,20 @@ fn run() -> Result<()> {
             println!("{}", usage());
             Ok(())
         }
+        Some("-V") | Some("--version") => {
+            println!("{}", software_version_line());
+            Ok(())
+        }
         Some(other) => Err(Error::invalid_config(format!(
             "unknown command '{other}'\n{}",
             usage()
         ))),
         None => Err(Error::invalid_config("command is not valid UTF-8")),
     }
+}
+
+fn software_version_line() -> String {
+    format!("srep {}", env!("CARGO_PKG_VERSION"))
 }
 
 fn run_compress(args: Vec<OsString>) -> Result<()> {
@@ -764,9 +772,11 @@ fn default_decompress_path(input: &Path) -> Option<OsString> {
 }
 
 fn usage() -> &'static str {
-    "Usage: srep <compress|decompress|info|test> [OPTIONS] INPUT [OUTPUT]\n\n\
+    "Usage: srep <compress|decompress|info|test|--version|--help> [OPTIONS] INPUT [OUTPUT]\n\n\
+     Software version (`srep --version` / `-V`, Cargo package version) is distinct from archive format. This CLI writes SREP-NG v3 by default; `srep info` reports the archive format family (SREP-NG v3 vs legacy SREP v1-v4).\n\
      SREP-NG v3 is the default archive format (per-block CRC32C plus global xxh3/blake3 digests). Stage 8 implements real m0 through m5 matching with a deterministic RAM-or-spill CandidateIndex; m5 is exhaustive and supports the REP overlay.\n\
-     compress options: --method m0|m1|m2|m3|m4|m5 (-m0..-m5) --layout index|future|io --checksum xxh3|blake3 --block-size SIZE --min-match SIZE --max-distance SIZE --rep-overlay --rep-distance SIZE --rep-min-match SIZE --force --quiet\n\
+     compress options: --method m0|m1|m2|m3|m4|m5 (-m0..-m5) --layout index|future|io --checksum xxh3|blake3 --block-size SIZE --min-match SIZE --seed-size SIZE --target-chunk SIZE --max-distance SIZE --rep-overlay --rep-distance SIZE --rep-min-match SIZE --force --quiet\n\
+     --seed-size is valid for m3/m4 (default equals --min-match); --target-chunk is valid for m1/m2 (default 4096).\n\
 other options: --force --quiet --memory SIZE --temp-dir PATH --temp-limit SIZE --output-limit SIZE\n\
 SIZE units: B, KiB/K, MiB/M, GiB/G (binary powers of 1024); '-' means stdin/stdout\n\
 default output suffix is .srep"
