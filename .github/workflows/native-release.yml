@@ -1,0 +1,133 @@
+name: Native release artifacts
+
+on:
+  push:
+    branches:
+      - 'ci/native-release/**'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Clean source ref or commit to build and package
+        required: true
+        default: 2980d782e647286d996fb5e8230e72b8e16c7a05
+        type: string
+      source_sha:
+        description: Expected full source commit SHA
+        required: true
+        default: 2980d782e647286d996fb5e8230e72b8e16c7a05
+        type: string
+      version:
+        description: Expected Cargo package version
+        required: true
+        default: 0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native-package:
+    name: ${{ matrix.os }} / Rust ${{ matrix.rust }} / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rust: 1.88.0
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            rust: stable
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            rust: 1.88.0
+            target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            rust: stable
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            rust: 1.88.0
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            rust: stable
+            target: aarch64-apple-darwin
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_TEST_THREADS: '1'
+    steps:
+      - name: Check out immutable production source revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || '2980d782e647286d996fb5e8230e72b8e16c7a05' }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out release tooling revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install selected Rust toolchain and Rustdoc component
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+          components: rust-docs
+      - name: Prepare Linux fixture root
+        if: runner.os == 'Linux'
+        shell: bash
+        run: install -d -m 700 /tmp/opencode
+      - name: Verify clean source identity and native host
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || '2980d782e647286d996fb5e8230e72b8e16c7a05' }}
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test -z "$(git -C source status --porcelain --untracked-files=all)"
+          test -z "$(git -C tools status --porcelain --untracked-files=all)"
+          test "$(rustc -vV | awk -F': ' '/^host:/{print $2}')" = "${{ matrix.target }}"
+      - name: Verify manifest version
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version || '0.1.0' }}
+        run: |
+          python -c 'import pathlib,tomllib,os; actual=tomllib.loads(pathlib.Path("source/Cargo.toml").read_text())["package"]["version"]; expected=os.environ["EXPECTED_VERSION"]; assert actual == expected, (actual, expected)'
+      - name: Check native source
+        working-directory: source
+        run: cargo check --locked --all-targets --all-features
+      - name: Run optimized native tests without weakening timing assertions
+        working-directory: source
+        run: cargo test --locked --release --all-targets --all-features
+      - name: Test portable packager
+        shell: bash
+        run: python tools/scripts/test-package-release.py
+      - name: Package and extract-smoke native binary
+        if: matrix.rust == '1.88.0'
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || '2980d782e647286d996fb5e8230e72b8e16c7a05' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native-dist"
+          python tools/scripts/package-release.py \
+            --repo source --build --target '${{ matrix.target }}' \
+            --out-dir "$RUNNER_TEMP/native-dist" \
+            --source-sha "$EXPECTED_SOURCE_SHA" \
+            --tooling-sha "$(git -C tools rev-parse HEAD)" \
+            --smoke-report "$RUNNER_TEMP/native-dist/smoke.json" --unpack-smoke
+      - name: Upload native build proof and package
+        if: matrix.rust == '1.88.0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: srep-v${{ inputs.version || '0.1.0' }}-${{ matrix.target }}
+          path: ${{ runner.temp }}/native-dist/*
+          if-no-files-found: error
+          retention-days: 14
