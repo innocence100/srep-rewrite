@@ -43,6 +43,15 @@ SUPPORTED_TARGETS = {
 }
 
 
+def artifact_name(version: str, target: str) -> str:
+    suffix = ".zip" if target == "x86_64-pc-windows-msvc" else ".tar.gz"
+    return f"srep-v{version}-{target}{suffix}"
+
+
+def smoke_name(version: str, target: str) -> str:
+    return f"srep-v{version}-{target}-smoke.json"
+
+
 def fail(message: str) -> "NoReturn":
     print(f"package-release.py: error: {message}", file=sys.stderr)
     raise SystemExit(2)
@@ -542,7 +551,7 @@ def main() -> int:
     runtime = runtime_metadata(args.target, args.binary)
     binary_name = "srep.exe" if "windows" in args.target else "srep"
     root_name = f"srep-v{version}-{args.target}"
-    extension = ".zip" if "windows" in args.target else ".tar.gz"
+    extension = ".zip" if args.target == "x86_64-pc-windows-msvc" else ".tar.gz"
     output_lock = OutputLock(args.out_dir)
     output_lock.__enter__()
     atexit.register(output_lock.__exit__, None, None, None)
@@ -592,13 +601,13 @@ def main() -> int:
         (payload / "BUILD-PROVENANCE.json").write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         for path in payload.iterdir():
             path.chmod(0o755 if path.name == binary_name else 0o644)
-        destination = args.out_dir / f"{root_name}{extension}"
+        destination = args.out_dir / artifact_name(version, args.target)
         fmt = "zip" if extension == ".zip" else "tar"
         archive(payload, root_name, destination, fmt=fmt, mtime=commit_time)
     artifact_owned = True
     try:
         if args.unpack_smoke:
-            report_path = (args.smoke_report or (args.out_dir / f"{root_name}-smoke.json")).resolve()
+            report_path = (args.smoke_report or (args.out_dir / smoke_name(version, args.target))).resolve()
             unpack_smoke(destination, fmt=fmt, binary_name=binary_name, expected_sha=str(provenance["binary_sha256"]), expected_version=version, report_path=report_path)
         digest = sha256(destination)
         sums = args.out_dir / "SHA256SUMS"
