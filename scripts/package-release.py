@@ -147,18 +147,45 @@ def validate_build_environment(repo: Path) -> None:
     forbidden = sorted(name for name in os.environ if name in {
         "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER",
         "RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS",
-        "CARGO_BUILD_TARGET", "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER",
-        "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER", "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER",
+        "CARGO_BUILD_TARGET",
     })
+    forbidden.extend(sorted(name for name in os.environ if name.startswith("CARGO_TARGET_") and name != "CARGO_TARGET_DIR"))
+    forbidden.extend(sorted(name for name in os.environ if name.endswith("_RUSTFLAGS")))
     if forbidden:
         fail(f"build environment contains unvalidated compiler configuration: {', '.join(forbidden)}")
-    config_paths = [repo / ".cargo" / name for name in ("config", "config.toml")]
-    cargo_home = os.environ.get("CARGO_HOME")
-    if cargo_home:
-        config_paths.extend(Path(cargo_home) / name for name in ("config", "config.toml"))
-    configured = [str(path) for path in config_paths if path.is_file()]
+    config_paths: set[Path] = set()
+    for ancestor in (repo, *repo.parents):
+        config_paths.update(ancestor / ".cargo" / name for name in ("config", "config.toml"))
+    cargo_home = Path(os.environ.get("CARGO_HOME") or Path.home() / ".cargo")
+    config_paths.update(cargo_home / name for name in ("config", "config.toml"))
+    configured = sorted(str(path) for path in config_paths if path.is_file())
     if configured:
         fail(f"Cargo configuration is not allowed for a reproducible release build: {', '.join(configured)}")
+
+
+class OutputLock:
+    """Serialize artifact publication and checksum updates without deleting foreign locks."""
+
+    def __init__(self, directory: Path) -> None:
+        self.path = directory / ".native-release.lock"
+        self.fd: int | None = None
+
+    def __enter__(self) -> "OutputLock":
+        try:
+            self.fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            fail(f"release output directory is locked by another process: {self.path}")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        if self.fd is None:
+            return
+        os.close(self.fd)
+        self.fd = None
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def build_binary(args: argparse.Namespace, toolchain: dict[str, str], out_dir: Path) -> tuple[Path, int, str, Path]:
@@ -334,10 +361,12 @@ def archive(payload: Path, root_name: str, destination: Path, *, fmt: str, mtime
         temporary.unlink(missing_ok=True)
         raise
     try:
-        temporary.replace(destination)
+        os.link(temporary, destination)
     except OSError:
         temporary.unlink(missing_ok=True)
         raise
+    else:
+        temporary.unlink(missing_ok=True)
 
 
 def platform_readme(target: str) -> str:
@@ -468,6 +497,7 @@ def main() -> int:
     tooling_sha, tooling_state = tooling_metadata(args.tooling_sha)
     version = package_version(args.repo)
     commit, state, commit_time = git_metadata(args.repo, args.source_sha)
+    validate_build_environment(args.repo)
     toolchain = toolchain_metadata(args)
     if toolchain["rustc_host"] not in SUPPORTED_TARGETS:
         fail(f"unsupported native rustc host: {toolchain['rustc_host']}")
@@ -489,6 +519,9 @@ def main() -> int:
     binary_name = "srep.exe" if "windows" in args.target else "srep"
     root_name = f"srep-v{version}-{args.target}"
     extension = ".zip" if "windows" in args.target else ".tar.gz"
+    output_lock = OutputLock(args.out_dir)
+    output_lock.__enter__()
+    atexit.register(output_lock.__exit__, None, None, None)
     with tempfile.TemporaryDirectory(prefix="srep-release-stage-", dir=args.out_dir) as raw_stage:
         payload = Path(raw_stage) / root_name
         payload.mkdir()
@@ -538,6 +571,7 @@ def main() -> int:
         destination = args.out_dir / f"{root_name}{extension}"
         fmt = "zip" if extension == ".zip" else "tar"
         archive(payload, root_name, destination, fmt=fmt, mtime=commit_time)
+    artifact_owned = True
     try:
         if args.unpack_smoke:
             report_path = (args.smoke_report or (args.out_dir / f"{root_name}-smoke.json")).resolve()
@@ -560,11 +594,13 @@ def main() -> int:
         finally:
             sums_tmp.unlink(missing_ok=True)
     except BaseException:
-        destination.unlink(missing_ok=True)
+        if artifact_owned:
+            destination.unlink(missing_ok=True)
         raise
     if cleanup_build is not None:
         cleanup_build()
-        atexit.unregister(cleanup_build)
+    output_lock.__exit__(None, None, None)
+    atexit.unregister(output_lock.__exit__)
     print(f"wrote {destination}")
     print(f"wrote {sums}")
     print(f"source_sha {commit}")

@@ -198,8 +198,33 @@ def test_archive_faults_leave_no_partial_outputs() -> None:
             (payload / "broken").unlink()
 
 
+def test_effective_cargo_configuration_is_rejected_before_build() -> None:
+    with tempfile.TemporaryDirectory(prefix="srep-package-cargo-env-") as raw:
+        root = Path(raw); repo = make_repo(root); _, tools_sha = make_tools(root); out = root / "out"
+        cargo_home = root / "cargo-home"; cargo_home.mkdir(); (cargo_home / "config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home")})
+        assert result.returncode == 2 and "config.toml" in result.stderr
+        target_flags = {"CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C debuginfo=2"}
+        result = package(root, repo, tools_sha, out, env=target_flags)
+        assert result.returncode == 2 and "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS" in result.stderr
+
+
+def test_output_lock_rejects_existing_lock_without_deleting_it() -> None:
+    module_spec = importlib.util.spec_from_file_location("package_release_lock", SOURCE_SCRIPT)
+    module = importlib.util.module_from_spec(module_spec); assert module_spec.loader
+    module_spec.loader.exec_module(module)
+    with tempfile.TemporaryDirectory(prefix="srep-package-lock-") as raw:
+        directory = Path(raw); lock = directory / ".native-release.lock"; lock.write_text("owner")
+        try:
+            with module.OutputLock(directory):
+                raise AssertionError("existing lock unexpectedly acquired")
+        except SystemExit as exc:
+            assert exc.code == 2
+        assert lock.read_text() == "owner"
+
+
 if __name__ == "__main__":
-    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs]
+    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it]
     for test in tests:
         test(); print(f"{test.__name__}: ok")
     print(f"test-package-release.py: PASS ({len(tests)} tests)")
