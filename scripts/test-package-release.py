@@ -21,6 +21,28 @@ HOST_TARGET = next(line.split(": ", 1)[1] for line in HOST.splitlines() if line.
 TARGET = HOST_TARGET if HOST_TARGET in {"x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"} else "x86_64-unknown-linux-gnu"
 REAL_RUSTC = subprocess.check_output(["rustup", "which", "rustc"], text=True).strip()
 REAL_CARGO = subprocess.check_output(["rustup", "which", "cargo"], text=True).strip()
+ALL_TARGETS = ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin")
+
+
+def artifact_name(version: str, target: str) -> str:
+    suffix = ".zip" if target == "x86_64-pc-windows-msvc" else ".tar.gz"
+    return f"srep-v{version}-{target}{suffix}"
+
+
+def smoke_name(version: str, target: str) -> str:
+    return f"srep-v{version}-{target}-smoke.json"
+
+
+def scratch_home_env(home: Path) -> dict[str, str | None]:
+    # Path.home() consults USERPROFILE on Windows and HOME on POSIX. Set all
+    # relevant variables so the default Cargo-home test is portable.
+    return {
+        "CARGO_HOME": None,
+        "HOME": str(home),
+        "USERPROFILE": str(home),
+        "HOMEDRIVE": home.drive or "",
+        "HOMEPATH": str(home)[len(home.drive):] if home.drive else str(home),
+    }
 
 
 def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -98,9 +120,9 @@ def test_native_build_archive_extract_smoke() -> None:
         root = Path(raw); repo = make_repo(root); _, tools_sha = make_tools(root); out = root / "out"
         result = package(root, repo, tools_sha, out, "--unpack-smoke")
         assert result.returncode == 0, result.stdout + result.stderr
-        artifact = out / f"srep-v0.1.0-{TARGET}{'.zip' if 'windows' in TARGET else '.tar.gz'}"
+        artifact = out / artifact_name("0.1.0", TARGET)
         assert artifact.is_file()
-        report = json.loads((out / f"srep-v0.1.0-{TARGET}-smoke.json").read_text())
+        report = json.loads((out / smoke_name("0.1.0", TARGET)).read_text())
         assert len(report["steps"]) >= 10 and all(step["exit_code"] == 0 for step in report["steps"])
         assert report["extracted_binary_sha256"] == report["binary_sha256"]
         with (tarfile.open(artifact) if artifact.name.endswith(".tar.gz") else _zip(artifact)) as archive:
@@ -154,12 +176,12 @@ def test_wrong_version_child_failure_and_archive_cleanup() -> None:
         root = Path(raw); repo = make_repo(root, reported_version="9.9.9"); _, tools_sha = make_tools(root); out = root / "out"
         result = package(root, repo, tools_sha, out, "--unpack-smoke")
         assert result.returncode == 2 and "expected 'srep 0.1.0'" in result.stderr
-        assert not list(out.glob("srep-v0.1.0-*tar.gz"))
-        report = next(out.glob("*-smoke.json")); assert "failure" in json.loads(report.read_text())
+        assert not (out / artifact_name("0.1.0", TARGET)).exists()
+        report = out / smoke_name("0.1.0", TARGET); assert "failure" in json.loads(report.read_text())
         repo2 = make_repo(root / "child", reported_version="0.1.0"); out2 = root / "out2"
         result = package(root, repo2, tools_sha, out2, "--unpack-smoke", env={"SREP_TEST_CHILD_FAILURE": "1"})
         assert result.returncode == 2
-        report = next(out2.glob("*-smoke.json")); assert '"exit_code": 17' in report.read_text()
+        report = out2 / smoke_name("0.1.0", TARGET); assert '"exit_code": 17' in report.read_text()
         out2.mkdir(exist_ok=True)
         sums = out2 / "SHA256SUMS"; sums.write_text("old\n")
         result = package(root, repo2, tools_sha, out2)
@@ -240,7 +262,7 @@ def test_concurrent_packagers_lock_and_retry_with_second_artifact() -> None:
         release.write_text("go")
         stdout, stderr = first.communicate(timeout=120)
         assert first.returncode == 0, stdout + stderr
-        old_artifact = out / f"srep-v0.1.0-{TARGET}.tar.gz"
+        old_artifact = out / artifact_name("0.1.0", TARGET)
         old_digest = hashlib.sha256(old_artifact.read_bytes()).hexdigest()
         sums_before = (out / "SHA256SUMS").read_text()
         text = (repo / "Cargo.toml").read_text().replace('version = "0.1.0"', 'version = "0.1.1"')
@@ -252,7 +274,7 @@ def test_concurrent_packagers_lock_and_retry_with_second_artifact() -> None:
         subprocess.run(["git", "commit", "-qm", "second artifact"], cwd=repo, check=True)
         second_retry = package(root, repo, tools_sha, out)
         assert second_retry.returncode == 0, second_retry.stderr
-        new_artifact = out / f"srep-v0.1.1-{TARGET}.tar.gz"
+        new_artifact = out / artifact_name("0.1.1", TARGET)
         assert new_artifact.is_file() and hashlib.sha256(old_artifact.read_bytes()).hexdigest() == old_digest
         sums = (out / "SHA256SUMS").read_text(); assert old_digest in sums and hashlib.sha256(new_artifact.read_bytes()).hexdigest() in sums
         assert sums.startswith(sums_before)
@@ -263,19 +285,19 @@ def test_failed_second_package_preserves_old_artifact_and_checksum() -> None:
         root = Path(raw); repo = make_repo(root); tools, tools_sha = make_tools(root); out = root / "out"
         first = package(root, repo, tools_sha, out)
         assert first.returncode == 0, first.stderr
-        old_artifact = out / f"srep-v0.1.0-{TARGET}.tar.gz"; old_bytes = old_artifact.read_bytes(); old_sums = (out / "SHA256SUMS").read_text()
+        old_artifact = out / artifact_name("0.1.0", TARGET); old_bytes = old_artifact.read_bytes(); old_sums = (out / "SHA256SUMS").read_text()
         (repo / "Cargo.toml").write_text((repo / "Cargo.toml").read_text().replace('version = "0.1.0"', 'version = "0.1.1"'))
         (repo / "Cargo.lock").write_text((repo / "Cargo.lock").read_text().replace('version = "0.1.0"', 'version = "0.1.1"', 1))
         (repo / "src/main.rs").write_text((repo / "src/main.rs").read_text().replace("srep 0.1.0", "srep 0.1.1"))
         subprocess.run(["git", "add", "Cargo.toml", "src/main.rs", "Cargo.lock"], cwd=repo, check=True); subprocess.run(["git", "commit", "-qm", "failing artifact"], cwd=repo, check=True)
         failed = package(root, repo, tools_sha, out, "--unpack-smoke", env={"SREP_TEST_CHILD_FAILURE": "1"})
-        assert failed.returncode == 2 and (out / "srep-v0.1.1-x86_64-unknown-linux-gnu-smoke.json").is_file()
+        assert failed.returncode == 2 and (out / smoke_name("0.1.1", TARGET)).is_file()
         assert old_artifact.read_bytes() == old_bytes and (out / "SHA256SUMS").read_text() == old_sums
-        assert not (out / f"srep-v0.1.1-{TARGET}.tar.gz").exists() and not (out / ".native-release.lock").exists()
+        assert not (out / artifact_name("0.1.1", TARGET)).exists() and not (out / ".native-release.lock").exists()
         failed_checksum = package(root, repo, tools_sha, out, env={"SREP_TEST_CHECKSUM_FAILURE": "1"})
         assert failed_checksum.returncode == 2 and "checksum publication failure" in failed_checksum.stderr
         assert old_artifact.read_bytes() == old_bytes and (out / "SHA256SUMS").read_text() == old_sums
-        assert not (out / f"srep-v0.1.1-{TARGET}.tar.gz").exists() and not (out / ".native-release.lock").exists()
+        assert not (out / artifact_name("0.1.1", TARGET)).exists() and not (out / ".native-release.lock").exists()
 
 
 def test_effective_cargo_configuration_is_rejected_before_build() -> None:
@@ -291,7 +313,7 @@ def test_effective_cargo_configuration_is_rejected_before_build() -> None:
         assert result.returncode == 2 and str(ancestor / "config.toml") in result.stderr and not marker.exists()
         (ancestor / "config.toml").unlink()
         default_home = root / "default-home"; (default_home / ".cargo").mkdir(parents=True); (default_home / ".cargo/config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
-        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": None, "HOME": str(default_home), "RUSTC": str(fake)})
+        result = package(root, repo, tools_sha, out, env={**scratch_home_env(default_home), "RUSTC": str(fake)})
         assert result.returncode == 2 and ".cargo/config.toml" in result.stderr and not marker.exists()
         result = package(root, repo, tools_sha, out, env={"CARGO_HOME": "relative-home", "HOME": str(root / "clean-home"), "RUSTC": str(fake)})
         assert result.returncode == 2 and "absolute path" in result.stderr and not marker.exists()
@@ -302,6 +324,36 @@ def test_effective_cargo_configuration_is_rejected_before_build() -> None:
         clean_home = root / "clean-home"; clean_home.mkdir()
         result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(clean_home), "HOME": str(clean_home), "RUSTC": REAL_RUSTC, "CARGO": REAL_CARGO}, cwd=caller)
         assert result.returncode == 0, result.stderr
+
+
+def test_artifact_naming_contract_covers_all_native_targets() -> None:
+    for target in ALL_TARGETS:
+        expected = ".zip" if target == "x86_64-pc-windows-msvc" else ".tar.gz"
+        assert artifact_name("0.1.0", target).endswith(expected)
+        assert smoke_name("0.1.0", target) == f"srep-v0.1.0-{target}-smoke.json"
+
+
+def test_crate_notice_uses_source_cwd_and_same_environment() -> None:
+    with tempfile.TemporaryDirectory(prefix="srep-package-metadata-") as raw:
+        root = Path(raw); repo = make_repo(root); _, tools_sha = make_tools(root)
+        source_home = root / "cargo-home"; source_home.mkdir()
+        env = {"CARGO_HOME": str(source_home), "RUSTC": REAL_RUSTC, "CARGO": REAL_CARGO}
+        module_spec = importlib.util.spec_from_file_location("package_release_metadata", SOURCE_SCRIPT)
+        module = importlib.util.module_from_spec(module_spec); assert module_spec.loader
+        module_spec.loader.exec_module(module)
+        original_run = module.run; calls: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
+        def capture(argv: list[str], *, cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
+            calls.append((argv, cwd, env))
+            return original_run(argv, cwd=cwd, check=check, env=env)
+        module.run = capture
+        args = type("Args", (), {"cargo": REAL_CARGO, "target": TARGET, "skip_license_harvest": False})()
+        notice = module.crate_notice(repo, args, env)
+        assert "Third-party crate license" in notice
+        metadata_calls = [call for call in calls if "metadata" in call[0]]
+        assert metadata_calls and metadata_calls[0][1] == repo
+        assert metadata_calls[0][2]["RUSTC"] == REAL_RUSTC
+        assert metadata_calls[0][2]["CARGO_HOME"] == str(source_home)
+        assert Path.cwd() != repo
 
 
 def test_output_lock_rejects_existing_lock_without_deleting_it() -> None:
@@ -319,7 +371,7 @@ def test_output_lock_rejects_existing_lock_without_deleting_it() -> None:
 
 
 if __name__ == "__main__":
-    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_concurrent_packagers_lock_and_retry_with_second_artifact, test_failed_second_package_preserves_old_artifact_and_checksum, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it]
+    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_concurrent_packagers_lock_and_retry_with_second_artifact, test_failed_second_package_preserves_old_artifact_and_checksum, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it, test_artifact_naming_contract_covers_all_native_targets, test_crate_notice_uses_source_cwd_and_same_environment]
     for test in tests:
         test(); print(f"{test.__name__}: ok")
     print(f"test-package-release.py: PASS ({len(tests)} tests)")
