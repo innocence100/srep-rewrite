@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,8 @@ SOURCE_SCRIPT = ROOT / "scripts" / "package-release.py"
 HOST = subprocess.check_output(["rustc", "-vV"], text=True)
 HOST_TARGET = next(line.split(": ", 1)[1] for line in HOST.splitlines() if line.startswith("host: "))
 TARGET = HOST_TARGET if HOST_TARGET in {"x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"} else "x86_64-unknown-linux-gnu"
+REAL_RUSTC = subprocess.check_output(["rustup", "which", "rustc"], text=True).strip()
+REAL_CARGO = subprocess.check_output(["rustup", "which", "cargo"], text=True).strip()
 
 
 def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -36,6 +39,10 @@ use std::fs;
 fn main() {{
     let args: Vec<String> = env::args().skip(1).collect();
     if env::var_os("SREP_TEST_CHILD_FAILURE").is_some() && args.first().map(String::as_str) == Some("--help") {{ std::process::exit(17); }}
+    if args.first().map(String::as_str) == Some("--version") {{
+        if let Some(marker) = env::var_os("SREP_TEST_WAIT_MARKER") {{ let _ = fs::write(&marker, b"started"); }}
+        if let Some(wait_for) = env::var_os("SREP_TEST_WAIT_FOR") {{ while !std::path::Path::new(&wait_for).exists() {{ std::thread::sleep(std::time::Duration::from_millis(25)); }} }}
+    }}
     match args.first().map(String::as_str) {{
         Some("--version") => println!("srep {reported_version}"),
         Some("--help") => println!("srep test fixture help"),
@@ -72,13 +79,18 @@ def make_tools(root: Path) -> tuple[Path, str]:
     return tools, subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tools, text=True).strip()
 
 
-def package(tools_root: Path, repo: Path, tools_sha: str, out: Path, *extra: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def package(tools_root: Path, repo: Path, tools_sha: str, out: Path, *extra: str, env: dict[str, str | None] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, str(tools_root / "tools/scripts/package-release.py"), "--repo", str(repo), "--build",
                "--target", TARGET, "--out-dir", str(out), "--source-sha",
                subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
                "--tooling-sha", tools_sha, "--skip-license-harvest", *extra]
-    merged = os.environ.copy(); merged.update(env or {})
-    return run(command, env=merged)
+    merged = os.environ.copy()
+    for key, value in (env or {}).items():
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return run(command, env=merged, cwd=cwd)
 
 
 def test_native_build_archive_extract_smoke() -> None:
@@ -197,16 +209,95 @@ def test_archive_faults_leave_no_partial_outputs() -> None:
             assert not destination.exists() and not list(root.glob(f".{destination.name}.*.tmp"))
             (payload / "broken").unlink()
 
+        destination = root / "race.tar.gz"
+        foreign = b"foreign artifact"
+        module.ARCHIVE_PRELINK_HOOK = lambda path: path.write_bytes(foreign)
+        try:
+            module.archive(payload, "root", destination, fmt="tar", mtime=1)
+        except FileExistsError:
+            pass
+        else:
+            raise AssertionError("destination race unexpectedly succeeded")
+        assert destination.read_bytes() == foreign
+
+
+def test_concurrent_packagers_lock_and_retry_with_second_artifact() -> None:
+    with tempfile.TemporaryDirectory(prefix="srep-package-concurrent-") as raw:
+        root = Path(raw); repo = make_repo(root); tools, tools_sha = make_tools(root); out = root / "out"
+        marker = root / "started"; release = root / "release"
+        env = {"SREP_TEST_WAIT_FOR": str(release), "SREP_TEST_WAIT_MARKER": str(marker)}
+        first = subprocess.Popen([sys.executable, str(tools / "scripts/package-release.py"), "--repo", str(repo), "--build", "--target", TARGET, "--out-dir", str(out), "--source-sha", subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(), "--tooling-sha", tools_sha, "--skip-license-harvest", "--unpack-smoke"], cwd=root, env={**os.environ, **{k: v for k, v in env.items()}}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        deadline = time.monotonic() + 120
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert marker.exists(), "first packager did not reach smoke barrier"
+        before_names = sorted(path.name for path in out.iterdir())
+        before_bytes = {path.name: path.read_bytes() for path in out.iterdir() if path.is_file() and path.name != ".native-release.lock"}
+        second = package(root, repo, tools_sha, out)
+        assert second.returncode == 2 and "locked" in second.stderr
+        assert sorted(path.name for path in out.iterdir()) == before_names
+        assert {path.name: path.read_bytes() for path in out.iterdir() if path.is_file() and path.name != ".native-release.lock"} == before_bytes
+        release.write_text("go")
+        stdout, stderr = first.communicate(timeout=120)
+        assert first.returncode == 0, stdout + stderr
+        old_artifact = out / f"srep-v0.1.0-{TARGET}.tar.gz"
+        old_digest = hashlib.sha256(old_artifact.read_bytes()).hexdigest()
+        sums_before = (out / "SHA256SUMS").read_text()
+        text = (repo / "Cargo.toml").read_text().replace('version = "0.1.0"', 'version = "0.1.1"')
+        (repo / "Cargo.toml").write_text(text)
+        (repo / "Cargo.lock").write_text((repo / "Cargo.lock").read_text().replace('version = "0.1.0"', 'version = "0.1.1"', 1))
+        (repo / "src/main.rs").write_text((repo / "src/main.rs").read_text().replace("srep 0.1.0", "srep 0.1.1"))
+        subprocess.run(["git", "add", "Cargo.toml", "src/main.rs"], cwd=repo, check=True)
+        subprocess.run(["git", "add", "Cargo.lock"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "second artifact"], cwd=repo, check=True)
+        second_retry = package(root, repo, tools_sha, out)
+        assert second_retry.returncode == 0, second_retry.stderr
+        new_artifact = out / f"srep-v0.1.1-{TARGET}.tar.gz"
+        assert new_artifact.is_file() and hashlib.sha256(old_artifact.read_bytes()).hexdigest() == old_digest
+        sums = (out / "SHA256SUMS").read_text(); assert old_digest in sums and hashlib.sha256(new_artifact.read_bytes()).hexdigest() in sums
+        assert sums.startswith(sums_before)
+
+
+def test_failed_second_package_preserves_old_artifact_and_checksum() -> None:
+    with tempfile.TemporaryDirectory(prefix="srep-package-preserve-") as raw:
+        root = Path(raw); repo = make_repo(root); tools, tools_sha = make_tools(root); out = root / "out"
+        first = package(root, repo, tools_sha, out)
+        assert first.returncode == 0, first.stderr
+        old_artifact = out / f"srep-v0.1.0-{TARGET}.tar.gz"; old_bytes = old_artifact.read_bytes(); old_sums = (out / "SHA256SUMS").read_text()
+        (repo / "Cargo.toml").write_text((repo / "Cargo.toml").read_text().replace('version = "0.1.0"', 'version = "0.1.1"'))
+        (repo / "Cargo.lock").write_text((repo / "Cargo.lock").read_text().replace('version = "0.1.0"', 'version = "0.1.1"', 1))
+        (repo / "src/main.rs").write_text((repo / "src/main.rs").read_text().replace("srep 0.1.0", "srep 0.1.1"))
+        subprocess.run(["git", "add", "Cargo.toml", "src/main.rs", "Cargo.lock"], cwd=repo, check=True); subprocess.run(["git", "commit", "-qm", "failing artifact"], cwd=repo, check=True)
+        failed = package(root, repo, tools_sha, out, "--unpack-smoke", env={"SREP_TEST_CHILD_FAILURE": "1"})
+        assert failed.returncode == 2 and (out / "srep-v0.1.1-x86_64-unknown-linux-gnu-smoke.json").is_file()
+        assert old_artifact.read_bytes() == old_bytes and (out / "SHA256SUMS").read_text() == old_sums
+        assert not (out / f"srep-v0.1.1-{TARGET}.tar.gz").exists() and not (out / ".native-release.lock").exists()
+
 
 def test_effective_cargo_configuration_is_rejected_before_build() -> None:
     with tempfile.TemporaryDirectory(prefix="srep-package-cargo-env-") as raw:
         root = Path(raw); repo = make_repo(root); _, tools_sha = make_tools(root); out = root / "out"
         cargo_home = root / "cargo-home"; cargo_home.mkdir(); (cargo_home / "config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
-        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home")})
+        marker = root / "compiler-invoked"; fake = root / "fake-rustc"; fake.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 91\n"); fake.chmod(0o755)
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home"), "RUSTC": str(fake)})
         assert result.returncode == 2 and "config.toml" in result.stderr
+        assert not marker.exists()
+        ancestor = root / ".cargo"; ancestor.mkdir(); (ancestor / "config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home"), "RUSTC": str(fake)})
+        assert result.returncode == 2 and str(ancestor / "config.toml") in result.stderr and not marker.exists()
+        (ancestor / "config.toml").unlink()
+        default_home = root / "default-home"; (default_home / ".cargo").mkdir(parents=True); (default_home / ".cargo/config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": None, "HOME": str(default_home), "RUSTC": str(fake)})
+        assert result.returncode == 2 and ".cargo/config.toml" in result.stderr and not marker.exists()
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": "relative-home", "HOME": str(root / "clean-home"), "RUSTC": str(fake)})
+        assert result.returncode == 2 and "absolute path" in result.stderr and not marker.exists()
         target_flags = {"CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C debuginfo=2"}
         result = package(root, repo, tools_sha, out, env=target_flags)
         assert result.returncode == 2 and "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS" in result.stderr
+        caller = root / "caller"; (caller / ".cargo").mkdir(parents=True); (caller / ".cargo/config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
+        clean_home = root / "clean-home"; clean_home.mkdir()
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(clean_home), "HOME": str(clean_home), "RUSTC": REAL_RUSTC, "CARGO": REAL_CARGO}, cwd=caller)
+        assert result.returncode == 0, result.stderr
 
 
 def test_output_lock_rejects_existing_lock_without_deleting_it() -> None:
@@ -224,7 +315,7 @@ def test_output_lock_rejects_existing_lock_without_deleting_it() -> None:
 
 
 if __name__ == "__main__":
-    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it]
+    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_concurrent_packagers_lock_and_retry_with_second_artifact, test_failed_second_package_preserves_old_artifact_and_checksum, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it]
     for test in tests:
         test(); print(f"{test.__name__}: ok")
     print(f"test-package-release.py: PASS ({len(tests)} tests)")

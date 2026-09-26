@@ -29,11 +29,13 @@ import tomllib
 from typing import NoReturn
 import zipfile
 from pathlib import Path
+from collections.abc import Callable
 
 
 DOCUMENTS = ("LICENSE", "README.md", "CHANGELOG.md", "THIRD_PARTY.md", "THIRD_PARTY.audit")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+ARCHIVE_PRELINK_HOOK: Callable[[Path], None] | None = None
 SUPPORTED_TARGETS = {
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
@@ -46,9 +48,9 @@ def fail(message: str) -> "NoReturn":
     raise SystemExit(2)
 
 
-def run(argv: list[str], *, cwd: Path | None = None, check: bool = True) -> str:
+def run(argv: list[str], *, cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
     try:
-        result = subprocess.run(argv, cwd=cwd, check=check, text=True, capture_output=True)
+        result = subprocess.run(argv, cwd=cwd, env=env, check=check, text=True, capture_output=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         output = getattr(exc, "stderr", "") or getattr(exc, "stdout", "") or str(exc)
         if check:
@@ -95,7 +97,7 @@ def package_version(repo: Path) -> str:
     return version
 
 
-def toolchain_metadata(args: argparse.Namespace) -> dict[str, str]:
+def resolve_rustc(args: argparse.Namespace) -> str:
     rustc = args.rustc or os.environ.get("RUSTC") or shutil.which("rustc")
     if not rustc:
         fail("rustc is required to record build provenance")
@@ -107,15 +109,30 @@ def toolchain_metadata(args: argparse.Namespace) -> dict[str, str]:
             rustc = run([str(selected), "which", "rustc"])
     except SystemExit:
         fail("cannot resolve the selected rustc through rustup")
-    verbose = run([rustc, "-vV"])
+    return str(Path(rustc).resolve())
+
+
+def cargo_environment(repo: Path, rustc: str, target_dir: Path | None = None) -> dict[str, str]:
+    cargo_home = os.environ.get("CARGO_HOME")
+    if cargo_home and not Path(cargo_home).is_absolute():
+        fail("CARGO_HOME must be an absolute path for a release build")
+    env = os.environ.copy()
+    env["RUSTC"] = rustc
+    if target_dir is not None:
+        env["CARGO_TARGET_DIR"] = str(target_dir)
+    return env
+
+
+def toolchain_metadata(args: argparse.Namespace, repo: Path, env: dict[str, str], rustc: str) -> dict[str, str]:
+    verbose = run([rustc, "-vV"], cwd=repo, env=env)
     fields: dict[str, str] = {}
     for line in verbose.splitlines():
         key, separator, value = line.partition(":")
         if separator:
             fields[key.strip().lower().replace("-", "_")] = value.strip()
-    sysroot = run([rustc, "--print", "sysroot"])
+    sysroot = run([rustc, "--print", "sysroot"], cwd=repo, env=env)
     metadata = {
-        "rustc": run([rustc, "--version"]),
+        "rustc": run([rustc, "--version"], cwd=repo, env=env),
         "rustc_commit": fields.get("commit_hash", "unknown"),
         "rustc_release": fields.get("release", "unknown"),
         "rustc_host": fields.get("host", "unknown"),
@@ -144,6 +161,9 @@ def tooling_metadata(expected: str) -> tuple[str, str]:
 
 
 def validate_build_environment(repo: Path) -> None:
+    cargo_home_value = os.environ.get("CARGO_HOME")
+    if cargo_home_value and not Path(cargo_home_value).is_absolute():
+        fail("CARGO_HOME must be an absolute path for a release build")
     forbidden = sorted(name for name in os.environ if name in {
         "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER",
         "RUSTFLAGS", "CARGO_BUILD_RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS",
@@ -156,7 +176,7 @@ def validate_build_environment(repo: Path) -> None:
     config_paths: set[Path] = set()
     for ancestor in (repo, *repo.parents):
         config_paths.update(ancestor / ".cargo" / name for name in ("config", "config.toml"))
-    cargo_home = Path(os.environ.get("CARGO_HOME") or Path.home() / ".cargo")
+    cargo_home = Path(cargo_home_value or Path.home() / ".cargo")
     config_paths.update(cargo_home / name for name in ("config", "config.toml"))
     configured = sorted(str(path) for path in config_paths if path.is_file())
     if configured:
@@ -188,7 +208,7 @@ class OutputLock:
             pass
 
 
-def build_binary(args: argparse.Namespace, toolchain: dict[str, str], out_dir: Path) -> tuple[Path, int, str, Path]:
+def build_binary(args: argparse.Namespace, toolchain: dict[str, str], out_dir: Path, base_env: dict[str, str]) -> tuple[Path, int, str, Path]:
     """Build in a disposable target directory and return the actual binary proof."""
     if toolchain["rustc_host"] != args.target:
         fail(f"native build requires rustc host {args.target}, observed {toolchain['rustc_host']}")
@@ -200,8 +220,8 @@ def build_binary(args: argparse.Namespace, toolchain: dict[str, str], out_dir: P
     build_root = Path(tempfile.mkdtemp(prefix="srep-release-build-", dir=out_dir))
     atexit.register(shutil.rmtree, build_root, ignore_errors=True)
     target_dir = build_root / "target"
-    env = os.environ.copy()
-    env.update({"CARGO_TARGET_DIR": str(target_dir), "RUSTC": str(rustc)})
+    env = dict(base_env)
+    env["CARGO_TARGET_DIR"] = str(target_dir)
     command = [cargo, "build", "--locked", "--release", "--target", args.target, "--bin", "srep"]
     started = int(time.time())
     try:
@@ -263,13 +283,13 @@ def runtime_metadata(target: str, binary: Path) -> dict[str, str]:
     return info
 
 
-def crate_notice(repo: Path, args: argparse.Namespace) -> str:
+def crate_notice(repo: Path, args: argparse.Namespace, env: dict[str, str]) -> str:
     if args.skip_license_harvest:
         return "Crate license harvest skipped by explicit test-only option.\n"
     cargo = args.cargo or os.environ.get("CARGO") or shutil.which("cargo")
     if not cargo:
         fail("cargo is required for the crate license harvest (or use the test-only skip option)")
-    metadata = json.loads(run([cargo, "metadata", "--locked", "--offline", "--filter-platform", args.target, "--format-version", "1", "--manifest-path", str(repo / "Cargo.toml")]))
+    metadata = json.loads(run([cargo, "metadata", "--locked", "--offline", "--filter-platform", args.target, "--format-version", "1", "--manifest-path", str(repo / "Cargo.toml")], cwd=repo, env=env))
     license_names = {"LICENSE", "LICENSE.md", "LICENSE.txt", "LICENSE-MIT", "LICENSE-APACHE", "COPYRIGHT", "COPYING", "NOTICE", "AUTHORS"}
     lines = [
         "Third-party crate license and copyright texts",
@@ -361,6 +381,8 @@ def archive(payload: Path, root_name: str, destination: Path, *, fmt: str, mtime
         temporary.unlink(missing_ok=True)
         raise
     try:
+        if ARCHIVE_PRELINK_HOOK is not None:
+            ARCHIVE_PRELINK_HOOK(destination)
         os.link(temporary, destination)
     except OSError:
         temporary.unlink(missing_ok=True)
@@ -498,7 +520,9 @@ def main() -> int:
     version = package_version(args.repo)
     commit, state, commit_time = git_metadata(args.repo, args.source_sha)
     validate_build_environment(args.repo)
-    toolchain = toolchain_metadata(args)
+    rustc = resolve_rustc(args)
+    build_env = cargo_environment(args.repo, rustc)
+    toolchain = toolchain_metadata(args, args.repo, build_env, rustc)
     if toolchain["rustc_host"] not in SUPPORTED_TARGETS:
         fail(f"unsupported native rustc host: {toolchain['rustc_host']}")
     build_root: Path | None = None
@@ -506,7 +530,7 @@ def main() -> int:
     build_command = "not available (reused binary)"
     built_at = int(time.time())
     if args.build:
-        args.binary, built_at, build_command, build_root = build_binary(args, toolchain, args.out_dir)
+        args.binary, built_at, build_command, build_root = build_binary(args, toolchain, args.out_dir, build_env)
         cleanup_build = lambda: shutil.rmtree(build_root, ignore_errors=True)
         atexit.register(cleanup_build)
     after_commit, after_state, after_time = git_metadata(args.repo, commit)
@@ -556,7 +580,7 @@ def main() -> int:
                 "",
                 "Signing/notarization: no signature is included. macOS users may need to approve this unsigned binary in Gatekeeper.",
                 "",
-                crate_notice(args.repo, args),
+                crate_notice(args.repo, args, build_env),
                 rust_std_notice(toolchain, args),
             ]) + "\n",
             encoding="utf-8",
