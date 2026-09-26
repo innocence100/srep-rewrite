@@ -13,6 +13,8 @@ import tarfile
 import tempfile
 import time
 from pathlib import Path
+from pathlib import PureWindowsPath
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_SCRIPT = ROOT / "scripts" / "package-release.py"
@@ -43,6 +45,10 @@ def scratch_home_env(home: Path) -> dict[str, str | None]:
         "HOMEDRIVE": home.drive or "",
         "HOMEPATH": str(home)[len(home.drive):] if home.drive else str(home),
     }
+
+
+def error_mentions_path(error: str, path: str | Path) -> bool:
+    return str(path).replace("\\", "/") in error.replace("\\", "/")
 
 
 def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -304,19 +310,17 @@ def test_effective_cargo_configuration_is_rejected_before_build() -> None:
     with tempfile.TemporaryDirectory(prefix="srep-package-cargo-env-") as raw:
         root = Path(raw); repo = make_repo(root); _, tools_sha = make_tools(root); out = root / "out"
         cargo_home = root / "cargo-home"; cargo_home.mkdir(); (cargo_home / "config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
-        marker = root / "compiler-invoked"; fake = root / "fake-rustc"; fake.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 91\n"); fake.chmod(0o755)
-        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home"), "RUSTC": str(fake)})
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home"), "RUSTC": REAL_RUSTC})
         assert result.returncode == 2 and "config.toml" in result.stderr
-        assert not marker.exists()
         ancestor = root / ".cargo"; ancestor.mkdir(); (ancestor / "config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
-        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home"), "RUSTC": str(fake)})
-        assert result.returncode == 2 and str(ancestor / "config.toml") in result.stderr and not marker.exists()
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(cargo_home), "HOME": str(root / "home"), "RUSTC": REAL_RUSTC})
+        assert result.returncode == 2 and error_mentions_path(result.stderr, ancestor / "config.toml")
         (ancestor / "config.toml").unlink()
         default_home = root / "default-home"; (default_home / ".cargo").mkdir(parents=True); (default_home / ".cargo/config.toml").write_text("[build]\nrustc-wrapper = 'counter'\n")
-        result = package(root, repo, tools_sha, out, env={**scratch_home_env(default_home), "RUSTC": str(fake)})
-        assert result.returncode == 2 and ".cargo/config.toml" in result.stderr and not marker.exists()
-        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": "relative-home", "HOME": str(root / "clean-home"), "RUSTC": str(fake)})
-        assert result.returncode == 2 and "absolute path" in result.stderr and not marker.exists()
+        result = package(root, repo, tools_sha, out, env={**scratch_home_env(default_home), "RUSTC": REAL_RUSTC})
+        assert result.returncode == 2 and error_mentions_path(result.stderr, default_home / ".cargo" / "config.toml")
+        result = package(root, repo, tools_sha, out, env={"CARGO_HOME": "relative-home", "HOME": str(root / "clean-home"), "RUSTC": REAL_RUSTC})
+        assert result.returncode == 2 and "absolute path" in result.stderr
         target_flags = {"CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS": "-C debuginfo=2"}
         result = package(root, repo, tools_sha, out, env=target_flags)
         assert result.returncode == 2 and "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS" in result.stderr
@@ -324,6 +328,29 @@ def test_effective_cargo_configuration_is_rejected_before_build() -> None:
         clean_home = root / "clean-home"; clean_home.mkdir()
         result = package(root, repo, tools_sha, out, env={"CARGO_HOME": str(clean_home), "HOME": str(clean_home), "RUSTC": REAL_RUSTC, "CARGO": REAL_CARGO}, cwd=caller)
         assert result.returncode == 0, result.stderr
+        module_spec = importlib.util.spec_from_file_location("package_release_config_order", SOURCE_SCRIPT)
+        module = importlib.util.module_from_spec(module_spec); assert module_spec.loader
+        module_spec.loader.exec_module(module)
+        source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+        old_argv = sys.argv
+        sys.argv = [str(SOURCE_SCRIPT), "--repo", str(repo), "--build", "--target", TARGET, "--out-dir", str(out), "--source-sha", source_sha, "--tooling-sha", tools_sha, "--skip-license-harvest"]
+        try:
+            with mock.patch.object(module, "tooling_metadata", return_value=(tools_sha, "clean")), mock.patch.object(module, "toolchain_metadata", side_effect=AssertionError("compiler metadata invoked before config validation")):
+                with mock.patch.dict(os.environ, {"CARGO_HOME": str(cargo_home), "RUSTC": REAL_RUSTC}, clear=False):
+                    try:
+                        module.main()
+                    except SystemExit as exc:
+                        assert exc.code == 2
+                    else:
+                        raise AssertionError("invalid config unexpectedly packaged")
+        finally:
+            sys.argv = old_argv
+
+
+def test_windows_path_normalization_helper_is_pure() -> None:
+    windows_path = PureWindowsPath(r"C:\scratch\.cargo\config.toml")
+    assert error_mentions_path("Cargo configuration: C:/scratch/.cargo/config.toml", windows_path)
+    assert error_mentions_path("Cargo configuration: C:\\scratch\\.cargo\\config.toml", windows_path)
 
 
 def test_artifact_naming_contract_covers_all_native_targets() -> None:
@@ -371,7 +398,7 @@ def test_output_lock_rejects_existing_lock_without_deleting_it() -> None:
 
 
 if __name__ == "__main__":
-    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_concurrent_packagers_lock_and_retry_with_second_artifact, test_failed_second_package_preserves_old_artifact_and_checksum, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it, test_artifact_naming_contract_covers_all_native_targets, test_crate_notice_uses_source_cwd_and_same_environment]
+    tests = [test_native_build_archive_extract_smoke, test_source_dirty_wrong_source_tooling_and_binary_format, test_wrong_version_child_failure_and_archive_cleanup, test_missing_license_and_std_notice, test_archive_faults_leave_no_partial_outputs, test_concurrent_packagers_lock_and_retry_with_second_artifact, test_failed_second_package_preserves_old_artifact_and_checksum, test_effective_cargo_configuration_is_rejected_before_build, test_output_lock_rejects_existing_lock_without_deleting_it, test_artifact_naming_contract_covers_all_native_targets, test_crate_notice_uses_source_cwd_and_same_environment, test_windows_path_normalization_helper_is_pure]
     for test in tests:
         test(); print(f"{test.__name__}: ok")
     print(f"test-package-release.py: PASS ({len(tests)} tests)")
