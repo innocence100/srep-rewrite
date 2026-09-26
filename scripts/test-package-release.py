@@ -272,6 +272,10 @@ def test_failed_second_package_preserves_old_artifact_and_checksum() -> None:
         assert failed.returncode == 2 and (out / "srep-v0.1.1-x86_64-unknown-linux-gnu-smoke.json").is_file()
         assert old_artifact.read_bytes() == old_bytes and (out / "SHA256SUMS").read_text() == old_sums
         assert not (out / f"srep-v0.1.1-{TARGET}.tar.gz").exists() and not (out / ".native-release.lock").exists()
+        failed_checksum = package(root, repo, tools_sha, out, env={"SREP_TEST_CHECKSUM_FAILURE": "1"})
+        assert failed_checksum.returncode == 2 and "checksum publication failure" in failed_checksum.stderr
+        assert old_artifact.read_bytes() == old_bytes and (out / "SHA256SUMS").read_text() == old_sums
+        assert not (out / f"srep-v0.1.1-{TARGET}.tar.gz").exists() and not (out / ".native-release.lock").exists()
 
 
 def test_effective_cargo_configuration_is_rejected_before_build() -> None:

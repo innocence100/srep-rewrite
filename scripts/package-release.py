@@ -614,6 +614,8 @@ def main() -> int:
         sums_handle.close()
         try:
             sums_tmp.write_text(sums_text, encoding="utf-8")
+            if os.environ.get("SREP_TEST_CHECKSUM_FAILURE") == "1":
+                fail("test-only checksum publication failure")
             sums_tmp.replace(sums)
         finally:
             sums_tmp.unlink(missing_ok=True)
