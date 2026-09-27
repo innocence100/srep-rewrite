@@ -48,7 +48,10 @@ def scratch_home_env(home: Path) -> dict[str, str | None]:
 
 
 def error_mentions_path(error: str, path: str | Path) -> bool:
-    return str(path).replace("\\", "/") in error.replace("\\", "/")
+    normalized_error = error.replace("\\", "/").lower()
+    normalized_path = str(path).replace("\\", "/").lower()
+    suffix = "/".join(Path(normalized_path).parts[-3:])
+    return normalized_path in normalized_error or suffix in normalized_error
 
 
 def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:

@@ -114,8 +114,9 @@ def resolve_rustc(args: argparse.Namespace) -> str:
     # resolve it before recording the compiler or passing RUSTC to Cargo.
     try:
         selected = Path(rustc).resolve()
-        if selected.name == "rustup":
-            rustc = run([str(selected), "which", "rustc"])
+        if selected.name in {"rustup", "rustup-init"}:
+            rustup = shutil.which("rustup") or str(selected)
+            rustc = run([rustup, "which", "rustc"])
     except SystemExit:
         fail("cannot resolve the selected rustc through rustup")
     return str(Path(rustc).resolve())
