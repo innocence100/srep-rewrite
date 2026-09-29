@@ -175,3 +175,135 @@ fn clear_with_capacity_keeps_budget_reservation() {
     assert_eq!(values.len(), 0);
     assert_eq!(budget.current(), values.reserved_bytes());
 }
+
+#[test]
+fn sequential_base_overlay_reuses_same_charged_source_workspaces() {
+    use super::candidate_sink::ExternalCandidateSink;
+    use crate::candidate_index::{CandidateIndex, IndexEntry, new_codec_candidate_index};
+    let r = ResourceConfig {
+        memory: 8 * 1024 * 1024,
+        ..ResourceConfig::default()
+    };
+    let mut c = ResourceContext::with_resources(&r).unwrap();
+    c.candidate_index_memtable_bytes = Some(2 * std::mem::size_of::<IndexEntry>() as u64);
+    let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+    let mut sink = ExternalCandidateSink::with_chunk_limit(&s, 2).unwrap();
+    let requirement = EnumerationRequirement::new(&s, true);
+    let mut base = SourceBarrier::new(
+        new_codec_candidate_index(&s).unwrap(),
+        &s,
+        SourcePhase::Base,
+    );
+    for n in 0u64..12 {
+        base.index_mut()
+            .insert(IndexEntry::new(0, &7u64.to_le_bytes(), n, n, &[]).unwrap())
+            .unwrap();
+    }
+    base.index_mut()
+        .for_each_candidate(0, &7u64.to_le_bytes(), 12, 0, &mut |e| {
+            sink.emit(CandidateRow {
+                candidate: crate::match_ir::MatchCandidate {
+                    src: e.position,
+                    dst: 100 + e.position,
+                    len: 30,
+                    insertion_ordinal: e.insertion_ordinal,
+                },
+                provenance: Provenance::EXTERNAL,
+            })
+        })
+        .unwrap();
+    let base_token = base.finish(&s).unwrap();
+    let spills = c.candidate_index_spill_count();
+    assert!(spills > 0);
+    let retained = c.memory.current();
+    let peak = c.memory.high_water();
+    // New index starts source positions/ordinals at0; old membership/cache state
+    // must not leak. Candidate sink stays live with its separate chunk/runs.
+    let mut overlay = SourceBarrier::new(
+        new_codec_candidate_index(&s).unwrap(),
+        &s,
+        SourcePhase::Overlay,
+    );
+    let mut old_hits = 0;
+    overlay
+        .index_mut()
+        .for_each_candidate(0, &7u64.to_le_bytes(), 100, 0, &mut |_| {
+            old_hits += 1;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(old_hits, 0);
+    for n in 0u64..12 {
+        overlay
+            .index_mut()
+            .insert(IndexEntry::new(0, &9u64.to_le_bytes(), n, n, &[]).unwrap())
+            .unwrap();
+    }
+    let mut hits = 0;
+    overlay
+        .index_mut()
+        .for_each_candidate(0, &9u64.to_le_bytes(), 12, 0, &mut |_| {
+            hits += 1;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(hits, 12);
+    let overlay_token = overlay.finish(&s).unwrap();
+    requirement
+        .complete(base_token, Some(overlay_token))
+        .unwrap()
+        .check_session(&s)
+        .unwrap();
+    assert_eq!(c.memory.current(), retained);
+    assert!(c.memory.high_water() <= peak + 65536);
+    assert!(c.memory.high_water() <= r.memory);
+    assert!(c.candidate_index_spill_count() > spills);
+    drop(sink.finish().unwrap());
+    s.retry_cleanup().unwrap();
+    assert_eq!(c.temp.current(), 0);
+    assert_eq!(s.handle_usage().current, 7);
+    drop(s);
+    assert_eq!(c.memory.current(), 0);
+}
+
+#[test]
+fn failed_base_verification_cannot_be_bypassed_by_reusing_overlay_buffers() {
+    use crate::candidate_index::{CandidateIndex, IndexEntry, new_codec_candidate_index};
+    let r = ResourceConfig {
+        memory: 8 * 1024 * 1024,
+        ..ResourceConfig::default()
+    };
+    let mut c = ResourceContext::with_resources(&r).unwrap();
+    c.candidate_index_memtable_bytes = Some(0);
+    let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+    let mut base = SourceBarrier::new(
+        new_codec_candidate_index(&s).unwrap(),
+        &s,
+        SourcePhase::Base,
+    );
+    base.index_mut()
+        .insert(IndexEntry::new(0, &7u64.to_le_bytes(), 0, 0, &[]).unwrap())
+        .unwrap();
+    // Corrupt a real persisted source page, not merely its cached view.
+    {
+        use std::io::{Seek, SeekFrom, Write};
+        let directory = s.temp_directory().unwrap();
+        let path = std::fs::read_dir(&*directory)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.seek(SeekFrom::Start(128)).unwrap();
+        file.write_all(&[255]).unwrap();
+        file.flush().unwrap();
+    }
+    assert!(base.finish(&s).is_err());
+    assert!(new_codec_candidate_index(&s).is_err());
+    s.retry_cleanup().unwrap();
+    assert_eq!(c.temp.current(), 0);
+    assert_eq!(s.file_usage().current, 0);
+    drop(s);
+    assert_eq!(c.memory.current(), 0);
+}

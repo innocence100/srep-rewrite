@@ -5,7 +5,7 @@ use super::contracts::{
 };
 use super::session::{
     CleanupEntry, ClosedHandle, CompressionSession, Operation, ResourceLease, SessionId, SessionIo,
-    WorkspaceKind,
+    SourceLoan,
 };
 use crate::candidate_index::{IndexEntry, index_entry_order};
 use crate::error::{Error, Result};
@@ -620,6 +620,11 @@ impl Drop for TableFile {
         if let Some(file) = self.file.take() {
             let path = file.path().to_path_buf();
             drop(file);
+            #[cfg(test)]
+            if self.handle.is_none() {
+                self.io
+                    .note_lifecycle(super::session::LifecycleEvent::EmergencyFileClosed);
+            }
             self.handle.take();
             self.remove_or_defer(path);
         }
@@ -967,15 +972,15 @@ impl<T: FixedRecord> RecordCursor<T> for TableCursor<'_, T> {
 
 /// One shared source cache for all runs in an I1 index. Key includes full file
 /// identity. No per-run 4 MiB allocation; misses reuse the selected page buffer.
-pub(crate) struct SourcePageCache {
+pub(crate) struct SourcePageCache<'a> {
     session: SessionId,
-    bytes: BudgetedVec<u8>,
+    bytes: SourceLoan<'a, u8>,
     tags: [Option<(RecordMeta, u64)>; 64],
     _tags: Reservation,
 }
-impl SourcePageCache {
-    pub(crate) fn new(s: &CompressionSession) -> Result<Self> {
-        let mut bytes = s.take_typed_workspace::<u8>(WorkspaceKind::SourceCache)?;
+impl<'a> SourcePageCache<'a> {
+    pub(crate) fn new(s: &'a CompressionSession) -> Result<Self> {
+        let mut bytes = s.source_cache()?;
         let len = (bytes.capacity() / PAGE_LEN).min(64) * PAGE_LEN;
         if len < PAGE_LEN {
             return Err(Error::memory_limit("source page cache minimum"));
@@ -1077,9 +1082,16 @@ impl SourcePageBuilder {
         Ok(())
     }
     pub(crate) fn new(s: &CompressionSession, input: u64) -> Result<Self> {
+        Self::create(s, input, false)
+    }
+    /// Caller retains B0 emergency guard until output is dropped or adopted.
+    pub(crate) fn emergency(s: &CompressionSession, input: u64) -> Result<Self> {
+        Self::create(s, input, true)
+    }
+    fn create(s: &CompressionSession, input: u64, emergency: bool) -> Result<Self> {
         let mut page = BudgetedVec::with_capacity(PAGE_LEN, s.memory())?;
         page.resize(PAGE_LEN, 0)?;
-        let (file, header) = TableFile::create(s, 5, 8, 104, input, false)?;
+        let (file, header) = TableFile::create(s, 5, 8, 104, input, emergency)?;
         Ok(Self {
             file,
             header,
@@ -1187,6 +1199,19 @@ pub(crate) struct PagedSourceTable {
     scratch: RefCell<BudgetedVec<u8>>,
 }
 impl PagedSourceTable {
+    pub(crate) fn retire(self) -> Result<ClosedHandle> {
+        #[cfg(test)]
+        self.file
+            .borrow()
+            .io
+            .note_lifecycle(super::session::LifecycleEvent::RetireVerify);
+        self.file.borrow().io.checkpoint(Operation::RetireVerify)?;
+        self.verify_uncached_all()?;
+        self.file.into_inner().close_handle()
+    }
+    pub(crate) fn adopt(&mut self, lease: ResourceLease) {
+        self.file.get_mut().handle = Some(lease);
+    }
     pub(crate) fn verify_envelope(&self) -> Result<()> {
         self.file.borrow_mut().verify_header(self.header)
     }

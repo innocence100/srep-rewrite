@@ -7,6 +7,7 @@
 
 pub(crate) mod candidate_sink;
 pub(crate) mod contracts;
+pub(crate) mod normalize;
 pub(crate) mod session;
 pub(crate) mod sort;
 pub(crate) mod storage;

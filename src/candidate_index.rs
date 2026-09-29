@@ -1,3 +1,4 @@
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -12,6 +13,12 @@ use crate::checksum::oneshot;
 use crate::config::ResourceConfig;
 use crate::error::{Error, ErrorKind, Result};
 use crate::resource::{BudgetedVec, MemoryBudget, Reservation, ResourceContext};
+
+use crate::offload::contracts::{
+    CodecSourceIndex, CodecSourceIndexFactory, SourceVerifier, VerifiedSourcePages,
+};
+use crate::offload::session::{CompressionSession, SourceLoan};
+use crate::offload::storage::{PagedSourceTable, SourcePageBuilder, SourcePageCache};
 
 pub const MAX_KEY_BYTES: usize = 32;
 pub const MAX_METADATA_BYTES: usize = 32;
@@ -1698,6 +1705,1142 @@ impl CandidateIndex for HybridCandidateIndex {
             return Ok(());
         }
         self.checkpoint(None)
+    }
+}
+
+// The public HybridCandidateIndex above deliberately retains its historical
+// (stronger) per-query validation contract.  The codec source index is a
+// separate, private implementation.  In particular, it never calls Run's
+// validate method from a query and it never materializes a query's hits.
+const CODEC_MAX_RUNS: usize = MAX_RUN_FAN_IN;
+const CODEC_MAX_SOURCES: usize = CODEC_MAX_RUNS + 2; // runs, memtable, incoming
+
+pub(crate) struct CodecPagedIndex<'a> {
+    session: &'a CompressionSession,
+    memtable: SourceLoan<'a, IndexEntry>,
+    runs: [Option<PagedSourceTable>; CODEC_MAX_RUNS],
+    run_count: usize,
+    cache: RefCell<SourcePageCache<'a>>,
+    bloom: SourceLoan<'a, u8>,
+    last_position: Option<u64>,
+    last_ordinal: Option<u64>,
+    poisoned: Cell<bool>,
+    finished: bool,
+    metrics: Cell<CodecIndexMetrics>,
+    _metadata: Reservation,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct CodecIndexMetrics {
+    pub(crate) queries: u64,
+    pub(crate) negative_queries: u64,
+    pub(crate) comparisons: u64,
+    pub(crate) yielded: u64,
+    pub(crate) checkpoints: u64,
+    pub(crate) compactions: u64,
+    pub(crate) barrier_rows: u64,
+}
+
+impl<'a> CodecPagedIndex<'a> {
+    fn new(session: &'a CompressionSession) -> Result<Self> {
+        let metadata = session
+            .memory()
+            .reserve(std::mem::size_of::<Self>() as u64 + 8192)?;
+        let memtable = session.source_memtable()?;
+        let cache = SourcePageCache::new(session)?;
+        let mut bloom = session.source_filter()?;
+        let bloom_len = bloom.capacity();
+        bloom.resize(bloom_len, 0)?;
+        Ok(Self {
+            session,
+            memtable,
+            runs: std::array::from_fn(|_| None),
+            run_count: 0,
+            cache: RefCell::new(cache),
+            bloom,
+            last_position: None,
+            last_ordinal: None,
+            poisoned: Cell::new(false),
+            finished: false,
+            metrics: Cell::new(CodecIndexMetrics::default()),
+            _metadata: metadata,
+        })
+    }
+
+    fn active(&self) -> Result<()> {
+        if self.poisoned.get() {
+            return Err(Error::temp_storage_context(
+                "codec source index is poisoned",
+            ));
+        }
+        if self.finished {
+            return Err(Error::temp_storage_context(
+                "codec source index is finished",
+            ));
+        }
+        self.session.check_cancelled()
+    }
+
+    pub(crate) fn metrics(&self) -> CodecIndexMetrics {
+        self.metrics.get()
+    }
+    fn note(&self, update: impl FnOnce(&mut CodecIndexMetrics) -> Result<()>) -> Result<()> {
+        let mut m = self.metrics.get();
+        update(&mut m)?;
+        self.metrics.set(m);
+        Ok(())
+    }
+    fn terminal<R>(&self, result: Result<R>) -> Result<R> {
+        if result.is_err() {
+            self.poisoned.set(true);
+        }
+        result
+    }
+
+    fn key_bits(&self, kind: u8, key: &[u8]) -> Option<[usize; 6]> {
+        let bits = self.bloom.len().checked_mul(8)?;
+        if bits == 0 {
+            return None;
+        }
+        let mut h = blake3::Hasher::new();
+        h.update(b"SREP-OFF-SOURCE-KEY-v1\0");
+        h.update(&[kind, key.len() as u8]);
+        h.update(key);
+        let digest = h.finalize();
+        let bytes = digest.as_bytes();
+        Some(std::array::from_fn(|i| {
+            let at = i * 4;
+            (u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize) % bits
+        }))
+    }
+
+    fn bloom_contains(&self, kind: u8, key: &[u8]) -> bool {
+        let Some(bits) = self.key_bits(kind, key) else {
+            return true;
+        };
+        bits.into_iter()
+            .all(|bit| self.bloom.as_slice()[bit / 8] & (1 << (bit % 8)) != 0)
+    }
+
+    fn bloom_insert(&mut self, kind: u8, key: &[u8]) {
+        let Some(bits) = self.key_bits(kind, key) else {
+            return;
+        };
+        for bit in bits {
+            self.bloom.as_mut_slice()[bit / 8] |= 1 << (bit % 8);
+        }
+    }
+
+    fn verify_epoch(&self) -> Result<()> {
+        for slot in &self.runs[..self.run_count] {
+            slot.as_ref()
+                .expect("run slot before run_count is occupied")
+                .verify_envelope()?;
+        }
+        Ok(())
+    }
+
+    fn read_cached(&self, table: &PagedSourceTable, index: u64) -> Result<IndexEntry> {
+        self.session.check_cancelled()?;
+        self.cache
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source page cache already borrowed"))?
+            .read_entry(table, index)
+    }
+
+    fn memtable_lower_bound(&self, kind: u8, key: &[u8]) -> usize {
+        let mut low = 0;
+        let mut high = self.memtable.len();
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if memtable_key_order(&self.memtable[middle], kind, key).is_lt() {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        low
+    }
+
+    fn run_lower_bound(&self, table: &PagedSourceTable, kind: u8, key: &[u8]) -> Result<u64> {
+        let mut low = 0;
+        let mut high = table.entry_count();
+        while low < high {
+            let middle = low + (high - low) / 2;
+            let entry = self.read_cached(table, middle)?;
+            self.note(|m| {
+                m.comparisons = m
+                    .comparisons
+                    .checked_add(1)
+                    .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                Ok(())
+            })?;
+            if memtable_key_order(&entry, kind, key).is_lt() {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        Ok(low)
+    }
+
+    fn query_run_start(
+        &self,
+        table: &PagedSourceTable,
+        kind: u8,
+        key: &[u8],
+    ) -> Result<Option<(u64, IndexEntry)>> {
+        let at = self.run_lower_bound(table, kind, key)?;
+        if at == table.entry_count() {
+            return Ok(None);
+        }
+        let entry = self.read_cached(table, at)?;
+        if entry.key_kind == kind && entry.key_slice() == key {
+            Ok(Some((at, entry)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn merge_and_write(
+        &self,
+        incoming: Option<IndexEntry>,
+        merge_count: usize,
+        mut builder: SourcePageBuilder,
+    ) -> Result<PagedSourceTable> {
+        let mut heads: [Option<IndexEntry>; CODEC_MAX_SOURCES] = std::array::from_fn(|_| None);
+        let mut next: [u64; CODEC_MAX_SOURCES] = [0; CODEC_MAX_SOURCES];
+        let mut source_kind = [0u8; CODEC_MAX_SOURCES];
+        let mut source_count = 0usize;
+
+        // Normal checkpoints create one immutable run from the current
+        // memtable.  Only a full run set performs a bounded compaction; this
+        // bounds resident run metadata, not total rewrite work. A fixed run cap
+        // can still rewrite old rows repeatedly; cumulative I/O is measured.
+        for run_index in 0..merge_count {
+            let table = self.runs[run_index]
+                .as_ref()
+                .expect("run slot before run_count is occupied");
+            source_kind[source_count] = run_index as u8;
+            heads[source_count] = Some(self.read_cached(table, 0)?);
+            next[source_count] = 0;
+            source_count += 1;
+        }
+        if !self.memtable.is_empty() {
+            source_kind[source_count] = CODEC_MAX_RUNS as u8;
+            heads[source_count] = Some(self.memtable[0]);
+            next[source_count] = 0;
+            source_count += 1;
+        }
+        if let Some(entry) = incoming {
+            source_kind[source_count] = (CODEC_MAX_RUNS + 1) as u8;
+            heads[source_count] = Some(entry);
+            next[source_count] = 0;
+            source_count += 1;
+        }
+
+        while let Some(selected) = (0..source_count)
+            .filter(|&i| heads[i].is_some())
+            .min_by(|&a, &b| index_entry_order(&heads[a].unwrap(), &heads[b].unwrap()))
+        {
+            let entry = heads[selected].take().unwrap();
+            builder.append(entry)?;
+            let source = source_kind[selected] as usize;
+            let position = next[selected]
+                .checked_add(1)
+                .ok_or_else(|| Error::temp_limit("codec source cursor overflow"))?;
+            next[selected] = position;
+            if source < merge_count {
+                let table = self.runs[source]
+                    .as_ref()
+                    .expect("run slot before run_count is occupied");
+                if position < table.entry_count() {
+                    heads[selected] = Some(self.read_cached(table, position)?);
+                }
+            } else if source == CODEC_MAX_RUNS {
+                if position < self.memtable.len() as u64 {
+                    heads[selected] = Some(self.memtable[position as usize]);
+                }
+            }
+        }
+        builder.finish()
+    }
+
+    fn checkpoint(&mut self, incoming: Option<IndexEntry>) -> Result<()> {
+        let result = (|| {
+            self.active()?;
+            // Choose ONCE, before allocation. Compact two smallest runs at
+            // pressure/full-set boundaries; no repeated giant+tiny full merge.
+            let pressured = self.run_count == CODEC_MAX_RUNS
+                || self.session.handle_usage().current >= self.session.policy().max_handles
+                || self
+                    .session
+                    .file_usage()
+                    .current
+                    .checked_add(2)
+                    .is_none_or(|n| n > self.session.policy().max_temp_files);
+            if pressured && self.run_count < 2 {
+                return Err(Error::temp_storage_context(
+                    "source checkpoint lacks replacement headroom",
+                ));
+            }
+            let merge_count = if pressured { 2 } else { 0 };
+            if merge_count == 2 {
+                // All slots are occupied before run_count; swapping descriptors
+                // has no effect on query order (heads are merged by entry key).
+                for target in 0..2 {
+                    let smallest = (target..self.run_count)
+                        .min_by_key(|&i| self.runs[i].as_ref().unwrap().entry_count())
+                        .unwrap();
+                    self.runs.swap(target, smallest);
+                }
+            }
+            let guard = if merge_count == 2 {
+                Some(self.session.emergency_merge()?)
+            } else {
+                None
+            };
+            let builder = if guard.is_some() {
+                SourcePageBuilder::emergency(self.session, 0)?
+            } else {
+                SourcePageBuilder::new(self.session, 0)?
+            };
+            let mut replacement = self.merge_and_write(incoming, merge_count, builder)?;
+            // Verify inputs freshly BEFORE taking ownership out of live slots.
+            // Persistent corruption leaves both original owners charged on error.
+            for table in self.runs[..merge_count].iter().flatten() {
+                table.verify_uncached_all()?;
+            }
+            if let Some(guard) = guard {
+                let first = match self.runs[0].take().unwrap().retire() {
+                    Ok(token) => token,
+                    Err(error) => {
+                        drop(replacement);
+                        drop(guard);
+                        return Err(error);
+                    }
+                };
+                let second = match self.runs[1].take().unwrap().retire() {
+                    Ok(token) => token,
+                    Err(error) => {
+                        drop(replacement);
+                        drop(guard);
+                        drop(first);
+                        return Err(error);
+                    }
+                };
+                match guard.adopt_output(first, second) {
+                    Ok(lease) => replacement.adopt(lease),
+                    Err((error, guard, a, b)) => {
+                        drop(replacement);
+                        drop(guard);
+                        drop(a);
+                        drop(b);
+                        return Err(error);
+                    }
+                }
+                self.note(|m| {
+                    m.compactions = m
+                        .compactions
+                        .checked_add(1)
+                        .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                    Ok(())
+                })?;
+            }
+            self.session.note_candidate_index_spill()?;
+            let old = std::mem::replace(&mut self.runs, std::array::from_fn(|_| None));
+            let mut retained = 0;
+            for (old_slot, table) in old.into_iter().enumerate() {
+                if old_slot >= merge_count && table.is_some() {
+                    self.runs[retained] = table;
+                    retained += 1;
+                }
+            }
+            self.runs[retained] = Some(replacement);
+            self.run_count = retained + 1;
+            self.memtable.clear_with_capacity();
+            self.note(|m| {
+                m.checkpoints = m
+                    .checkpoints
+                    .checked_add(1)
+                    .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                Ok(())
+            })?;
+            Ok(())
+        })();
+        if result.is_err() {
+            self.poisoned.set(true);
+        }
+        result
+    }
+
+    fn query_inner(
+        &self,
+        kind: u8,
+        key: &[u8],
+        before: u64,
+        max_distance: u64,
+        callback: &mut dyn FnMut(IndexEntry) -> Result<()>,
+    ) -> Result<()> {
+        let mut heads: [Option<IndexEntry>; CODEC_MAX_SOURCES] = std::array::from_fn(|_| None);
+        let mut positions: [u64; CODEC_MAX_SOURCES] = [0; CODEC_MAX_SOURCES];
+        let mut sources = 0usize;
+        for run_index in 0..self.run_count {
+            let table = self.runs[run_index]
+                .as_ref()
+                .expect("run slot before run_count is occupied");
+            if let Some((at, entry)) = self.query_run_start(table, kind, key)? {
+                heads[sources] = Some(entry);
+                positions[sources] = at;
+            }
+            sources += 1;
+        }
+        let mem = self.memtable_lower_bound(kind, key);
+        if mem < self.memtable.len()
+            && self.memtable[mem].key_kind == kind
+            && self.memtable[mem].key_slice() == key
+        {
+            heads[sources] = Some(self.memtable[mem]);
+            positions[sources] = mem as u64;
+        }
+        sources += 1;
+
+        loop {
+            self.session.check_cancelled()?;
+            let Some(selected) = (0..sources)
+                .filter(|&i| heads[i].is_some())
+                .min_by(|&a, &b| index_entry_order(&heads[a].unwrap(), &heads[b].unwrap()))
+            else {
+                break;
+            };
+            let entry = heads[selected].take().unwrap();
+            if entry.key_kind != kind || entry.key_slice() != key {
+                // Every source is ordered by key and cannot return to this
+                // key after leaving it.
+                continue;
+            }
+            if entry.position < before {
+                if max_distance == 0 || before - entry.position <= max_distance {
+                    callback(entry)?;
+                    self.note(|m| {
+                        m.yielded = m
+                            .yielded
+                            .checked_add(1)
+                            .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                        Ok(())
+                    })?;
+                } else {
+                    // Positions descend inside one key group, so this source
+                    // can be retired once it is too old.
+                    heads[selected] = None;
+                    continue;
+                }
+            }
+            let source = selected;
+            if source < self.run_count {
+                let table = self.runs[source]
+                    .as_ref()
+                    .expect("run slot before run_count is occupied");
+                let next = positions[source]
+                    .checked_add(1)
+                    .ok_or_else(|| Error::corrupt_index("codec source cursor overflow"))?;
+                positions[source] = next;
+                if next < table.entry_count() {
+                    let next_entry = self.read_cached(table, next)?;
+                    if next_entry.key_kind == kind && next_entry.key_slice() == key {
+                        heads[source] = Some(next_entry);
+                    }
+                }
+            } else if positions[source] + 1 < self.memtable.len() as u64 {
+                positions[source] += 1;
+                let next_entry = self.memtable[positions[source] as usize];
+                if next_entry.key_kind == kind && next_entry.key_slice() == key {
+                    heads[source] = Some(next_entry);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for CodecPagedIndex<'_> {
+    fn drop(&mut self) {
+        // Disk owners disappear before RAII source loans return to the session.
+        // An unverified/failed index aborts source reuse for this session: a later
+        // overlay cannot replace the missing base completion certificate.
+        if !self.finished {
+            self.session.source_failed();
+        }
+        for slot in &mut self.runs {
+            drop(slot.take());
+        }
+        self.run_count = 0;
+        self.memtable.clear_with_capacity();
+        self.bloom.as_mut_slice().fill(0);
+    }
+}
+
+impl CandidateIndex for CodecPagedIndex<'_> {
+    fn insert(&mut self, entry: IndexEntry) -> Result<()> {
+        let result = self.insert_inner(entry);
+        if result.is_err() {
+            self.poisoned.set(true);
+        }
+        result
+    }
+
+    fn for_each_candidate(
+        &self,
+        key_kind: u8,
+        key_bytes: &[u8],
+        before: u64,
+        max_distance: u64,
+        callback: &mut dyn FnMut(IndexEntry) -> Result<()>,
+    ) -> Result<()> {
+        let result = (|| {
+            self.active()?;
+            validate_query_shape(key_kind, key_bytes)?;
+            self.note(|m| {
+                m.queries = m
+                    .queries
+                    .checked_add(1)
+                    .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                Ok(())
+            })?;
+            // Negative membership costs no file I/O; final/retirement barriers
+            // still verify every persisted page, including never-queried ones.
+            if !self.bloom_contains(key_kind, key_bytes) {
+                self.note(|m| {
+                    m.negative_queries = m
+                        .negative_queries
+                        .checked_add(1)
+                        .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                    Ok(())
+                })?;
+                return Ok(());
+            }
+            self.query_inner(key_kind, key_bytes, before, max_distance, callback)
+        })();
+        self.terminal(result)
+    }
+    fn memory_budget(&self) -> &MemoryBudget {
+        self.memtable.budget()
+    }
+    fn finish_epoch(&mut self) -> Result<()> {
+        let result = (|| {
+            self.active()?;
+            if self.memtable.is_empty() {
+                self.verify_epoch()
+            } else {
+                self.checkpoint(None)
+            }
+        })();
+        self.terminal(result)
+    }
+}
+impl CodecPagedIndex<'_> {
+    fn insert_inner(&mut self, entry: IndexEntry) -> Result<()> {
+        self.active()?;
+        entry.validate()?;
+        if self
+            .last_position
+            .is_some_and(|previous| entry.position <= previous)
+        {
+            return Err(Error::corrupt_index(
+                "codec source positions must increase strictly",
+            ));
+        }
+        if self
+            .last_ordinal
+            .is_some_and(|previous| entry.insertion_ordinal <= previous)
+        {
+            return Err(Error::corrupt_index(
+                "codec source ordinals must increase strictly",
+            ));
+        }
+        self.bloom_insert(entry.key_kind, entry.key_slice());
+        let next_bytes = self
+            .memtable
+            .len()
+            .checked_add(1)
+            .and_then(|n| n.checked_mul(std::mem::size_of::<IndexEntry>()));
+        if next_bytes.is_none_or(|n| n as u64 > self.session.candidate_index_memtable_bytes())
+            || self.memtable.capacity() == self.memtable.len()
+        {
+            self.checkpoint(Some(entry))?;
+        } else {
+            if let Err(error) = self.memtable.insert_sorted(entry) {
+                self.poisoned.set(true);
+                return Err(error);
+            }
+        }
+        self.last_position = Some(entry.position);
+        self.last_ordinal = Some(entry.insertion_ordinal);
+        Ok(())
+    }
+}
+
+impl SourceVerifier for CodecPagedIndex<'_> {
+    fn finish_verified(&mut self, session: &CompressionSession) -> Result<()> {
+        let result = (|| {
+            self.active()?;
+            if self.session.identity() != session.identity() {
+                return Err(Error::corrupt_index("cross-session source verification"));
+            }
+            // Resident source entries need no disk flush merely to finish.
+            for slot in &mut self.runs[..self.run_count] {
+                slot.as_mut()
+                    .expect("run slot before run_count is occupied")
+                    .verify_uncached()?;
+            }
+            session.check_cancelled()?;
+            let rows = self.runs.iter().flatten().try_fold(0u64, |n, t| {
+                n.checked_add(t.entry_count())
+                    .ok_or_else(|| Error::temp_limit("barrier rows overflow"))
+            })?;
+            self.note(|m| {
+                m.barrier_rows = rows;
+                Ok(())
+            })?;
+            let old = std::mem::replace(&mut self.runs, std::array::from_fn(|_| None));
+            self.run_count = 0;
+            drop(old);
+            self.memtable.clear_with_capacity();
+            self.finished = true;
+            Ok(())
+        })();
+        if result.is_err() {
+            self.poisoned.set(true);
+        }
+        result
+    }
+}
+
+impl CodecSourceIndex for CodecPagedIndex<'_> {}
+
+pub(crate) struct CodecPagedIndexFactory<'a> {
+    session: &'a CompressionSession,
+}
+
+impl<'a> CodecPagedIndexFactory<'a> {
+    pub(crate) fn new(session: &'a CompressionSession) -> Self {
+        Self { session }
+    }
+}
+
+impl<'a> CodecSourceIndexFactory for CodecPagedIndexFactory<'a> {
+    type Index = CodecPagedIndex<'a>;
+
+    fn create(&self, session: &CompressionSession) -> Result<Self::Index> {
+        if self.session.identity() != session.identity() {
+            return Err(Error::corrupt_index("cross-session codec source factory"));
+        }
+        CodecPagedIndex::new(self.session)
+    }
+}
+
+pub(crate) fn new_codec_candidate_index(
+    session: &CompressionSession,
+) -> Result<CodecPagedIndex<'_>> {
+    CodecPagedIndex::new(session)
+}
+
+#[cfg(test)]
+mod codec_index_tests {
+    use super::*;
+    use crate::config::ResourceConfig;
+    use crate::offload::contracts::{CodecSourceIndexFactory, SourceVerifier};
+    use crate::offload::session::{CompressionSession, OffloadPolicy};
+
+    fn setup() -> (ResourceContext, CompressionSession) {
+        let resources = ResourceConfig {
+            memory: 16 * 1024 * 1024,
+            ..ResourceConfig::default()
+        };
+        let mut context = ResourceContext::with_resources(&resources).unwrap();
+        context.candidate_index_memtable_bytes = Some(1);
+        let session =
+            CompressionSession::new(&context, &resources, OffloadPolicy::default()).unwrap();
+        (context, session)
+    }
+
+    fn source(position: u64, ordinal: u64) -> IndexEntry {
+        IndexEntry::new(0, &7u64.to_le_bytes(), position, ordinal, &[]).unwrap()
+    }
+
+    #[test]
+    fn private_codec_index_streams_paged_hits_and_finishes_uncached() {
+        let (context, session) = setup();
+        // One-byte override intentionally forces every source row through the
+        // bounded run path and exercises run-head merging without allocating
+        // a hit vector.
+        let factory = CodecPagedIndexFactory::new(&session);
+        let mut index = factory.create(&session).unwrap();
+        for position in 0..20 {
+            index.insert(source(position, position)).unwrap();
+        }
+        let mut rows = Vec::new();
+        index
+            .for_each_candidate(0, &7u64.to_le_bytes(), 20, 3, &mut |entry| {
+                rows.push((entry.position, entry.insertion_ordinal));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(rows, vec![(19, 19), (18, 18), (17, 17)]);
+        index.finish_verified(&session).unwrap();
+        drop(index);
+        drop(session);
+        assert_eq!(context.memory.current(), 0);
+        assert_eq!(context.temp.current(), 0);
+    }
+
+    #[test]
+    fn private_codec_index_rejects_nonmonotone_source_positions_and_ordinals() {
+        let (_context, session) = setup();
+        let mut index = new_codec_candidate_index(&session).unwrap();
+        index.insert(source(4, 4)).unwrap();
+        assert_eq!(
+            index.insert(source(4, 5)).unwrap_err().kind(),
+            ErrorKind::CorruptIndex
+        );
+        assert!(index.finish_verified(&session).is_err());
+        drop(index);
+        let (_context, session) = setup();
+        let mut index = new_codec_candidate_index(&session).unwrap();
+        index.insert(source(4, 4)).unwrap();
+        assert_eq!(
+            index.insert(source(5, 4)).unwrap_err().kind(),
+            ErrorKind::CorruptIndex
+        );
+        assert!(index.finish_verified(&session).is_err());
+    }
+
+    #[test]
+    fn private_codec_index_zero_memtable_uses_direct_spill() {
+        let resources = ResourceConfig {
+            memory: 16 * 1024 * 1024,
+            ..ResourceConfig::default()
+        };
+        let mut context = ResourceContext::with_resources(&resources).unwrap();
+        context.candidate_index_memtable_bytes = Some(0);
+        let session =
+            CompressionSession::new(&context, &resources, OffloadPolicy::default()).unwrap();
+        let mut index = new_codec_candidate_index(&session).unwrap();
+        index.insert(source(1, 1)).unwrap();
+        let mut got = Vec::new();
+        index
+            .for_each_candidate(0, &7u64.to_le_bytes(), 2, 0, &mut |entry| {
+                got.push(entry.position);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(got, vec![1]);
+        index.finish_verified(&session).unwrap();
+        drop(index);
+        drop(session);
+        assert_eq!(context.memory.current(), 0);
+        assert_eq!(context.temp.current(), 0);
+    }
+
+    fn configured(cap: u64, handles: u64, files: u64) -> (ResourceContext, CompressionSession) {
+        let r = ResourceConfig {
+            memory: 16 * 1024 * 1024,
+            ..ResourceConfig::default()
+        };
+        let mut c = ResourceContext::with_resources(&r).unwrap();
+        c.candidate_index_memtable_bytes = Some(cap);
+        let s = CompressionSession::new(
+            &c,
+            &r,
+            OffloadPolicy {
+                max_handles: handles,
+                max_temp_files: files,
+                ..OffloadPolicy::default()
+            },
+        )
+        .unwrap();
+        (c, s)
+    }
+    fn keyed(n: u64) -> IndexEntry {
+        IndexEntry::new(0, &(n % 7).to_le_bytes(), n * 3, n, &[]).unwrap()
+    }
+    fn private_rows(
+        index: &CodecPagedIndex<'_>,
+        key: u64,
+        before: u64,
+        distance: u64,
+    ) -> Vec<IndexEntry> {
+        let mut rows = Vec::new();
+        index
+            .for_each_candidate(0, &key.to_le_bytes(), before, distance, &mut |r| {
+                rows.push(r);
+                Ok(())
+            })
+            .unwrap();
+        rows
+    }
+    #[test]
+    fn stream_matches_public_hybrid_through_multiple_run_epochs_and_distances() {
+        let (c, s) = configured(3 * std::mem::size_of::<IndexEntry>() as u64, 128, 192);
+        let mut private = new_codec_candidate_index(&s).unwrap();
+        let r = ResourceConfig::default();
+        let public_context = ResourceContext::with_resources(&r).unwrap();
+        let mut public = HybridCandidateIndex::with_memtable_bytes(&public_context, 512).unwrap();
+        for n in 0..90 {
+            private.insert(keyed(n)).unwrap();
+            public.insert(keyed(n)).unwrap();
+            if n % 11 == 0 {
+                private.finish_epoch().unwrap();
+                public.finish_epoch().unwrap();
+            }
+            if n % 9 == 0 {
+                for key in 0u64..8 {
+                    for dist in [0, 1, 15, 200] {
+                        let mut expected = Vec::new();
+                        public
+                            .for_each_candidate(0, &key.to_le_bytes(), n * 3 + 1, dist, &mut |e| {
+                                expected.push(e);
+                                Ok(())
+                            })
+                            .unwrap();
+                        assert_eq!(private_rows(&private, key, n * 3 + 1, dist), expected);
+                    }
+                }
+            }
+        }
+        assert!(private.metrics().compactions > 0);
+        assert!(private.metrics().checkpoints > 16);
+        private.finish_verified(&s).unwrap();
+        assert!(private.finish_verified(&s).is_err());
+        drop(private);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+        assert_eq!(s.handle_usage().current, 7);
+    }
+    #[test]
+    fn smallest_fd_policy_repeatedly_adopts_live_replacements() {
+        let (c, s) = configured(0, 10, 4);
+        let mut i = new_codec_candidate_index(&s).unwrap();
+        for n in 0..65 {
+            i.insert(source(n, n)).unwrap();
+        }
+        assert!(i.metrics().compactions >= 2);
+        assert!(i.run_count <= 3);
+        assert_eq!(
+            private_rows(&i, 7, 65, 3)
+                .iter()
+                .map(|e| e.position)
+                .collect::<Vec<_>>(),
+            vec![64, 63, 62]
+        );
+        assert!(s.emergency_merge().is_ok());
+        assert!(s.handle_usage().peak <= 10);
+        assert!(s.file_usage().peak <= 4);
+        assert_eq!(c.candidate_index_spill_count(), i.metrics().checkpoints);
+        i.finish_verified(&s).unwrap();
+        drop(i);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+        assert_eq!(s.file_usage().current, 0);
+        assert_eq!(s.handle_usage().current, 7);
+    }
+    fn run_path(i: &CodecPagedIndex<'_>, run: usize) -> std::path::PathBuf {
+        let generation = i.runs[run].as_ref().unwrap().identity().generation;
+        let dir = i.session.temp_directory().unwrap();
+        for e in fs::read_dir(&*dir).unwrap() {
+            let path = e.unwrap().path();
+            let mut f = File::open(&path).unwrap();
+            let mut header = [0; 128];
+            f.read_exact(&mut header).unwrap();
+            if &header[..8] == b"SRPOFF01"
+                && header[14] == 5
+                && u64::from_le_bytes(header[16..24].try_into().unwrap()) == generation
+            {
+                return path;
+            }
+        }
+        panic!("owned test source run not found")
+    }
+    fn corrupt(path: &Path, offset: u64) {
+        let mut f = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap();
+        f.seek(SeekFrom::Start(offset)).unwrap();
+        let mut b = [0];
+        f.read_exact(&mut b).unwrap();
+        b[0] ^= 0x80;
+        f.seek(SeekFrom::Start(offset)).unwrap();
+        f.write_all(&b).unwrap();
+        f.flush().unwrap();
+    }
+    #[test]
+    fn positive_queries_bound_reads_and_bloom_negatives_read_no_run_bytes() {
+        let (c, s) = configured(6000 * std::mem::size_of::<IndexEntry>() as u64, 128, 192);
+        let mut i = new_codec_candidate_index(&s).unwrap();
+        for n in 0u64..5000 {
+            i.insert(IndexEntry::new(0, &n.to_le_bytes(), n, n, &[]).unwrap())
+                .unwrap();
+        }
+        i.finish_epoch().unwrap();
+        assert_eq!(i.run_count, 1);
+        let before = s.io_used();
+        for _ in 0..1000 {
+            assert!(private_rows(&i, 999_999, 6000, 0).is_empty());
+        }
+        assert_eq!(s.io_used(), before);
+        assert_eq!(i.metrics().negative_queries, 1000);
+        // Force a true Bloom false-positive path without a probabilistic test.
+        i.bloom.as_mut_slice().fill(255);
+        let before = s.io_used();
+        for _ in 0..1000 {
+            assert!(private_rows(&i, 999_999, 6000, 0).is_empty());
+        }
+        let reads = s.io_used() - before;
+        // 5000 entries occupy8 pages. At most binary-search page probes per
+        // lookup; no full-run scan. Warm same-key cache needs only a few pages.
+        assert!(
+            reads <= 1000 * 3 * 65536,
+            "unexpected whole-run query I/O: {reads}"
+        );
+        let before = s.io_used();
+        for _ in 0..1000 {
+            assert_eq!(private_rows(&i, 2345, 6000, 0).len(), 1);
+        }
+        let hit_reads = s.io_used() - before;
+        assert!(hit_reads <= 1000 * 3 * 65536);
+        assert!(i.metrics().comparisons < 3000 * 15);
+        assert_eq!(i.metrics().yielded, 1000);
+        eprintln!(
+            "I1 read evidence: negative1000=0, false-positive1000={reads}, positive1000={hit_reads}, rows5000/pages8"
+        );
+        let before = s.io_used();
+        i.finish_verified(&s).unwrap();
+        assert!(s.io_used() - before >= 8 * 65536);
+        assert_eq!(i.metrics().barrier_rows, 5000);
+        drop(i);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+    }
+    #[test]
+    fn cached_and_never_queried_corruption_fail_final_barrier() {
+        for offset in [0, 16, 48, 64, 128 + 65536 + 90] {
+            let (c, s) = configured(2000 * std::mem::size_of::<IndexEntry>() as u64, 128, 192);
+            let mut i = new_codec_candidate_index(&s).unwrap();
+            for n in 0..1500 {
+                i.insert(source(n, n)).unwrap();
+            }
+            i.finish_epoch().unwrap();
+            assert_eq!(private_rows(&i, 7, 1500, 1).len(), 1);
+            let path = run_path(&i, 0);
+            corrupt(&path, offset);
+            // A negative query cannot conceal corruption at finish.
+            assert!(private_rows(&i, 999, 1600, 0).is_empty());
+            assert_eq!(
+                i.finish_verified(&s).unwrap_err().kind(),
+                ErrorKind::CorruptIndex
+            );
+            assert!(i.finish_verified(&s).is_err());
+            assert!(path.exists());
+            assert!(c.temp.current() > 0);
+            drop(i);
+            s.retry_cleanup().unwrap();
+            assert_eq!(c.temp.current(), 0);
+        }
+    }
+    #[test]
+    fn corrupt_retiring_input_is_not_deleted_or_unaccounted_on_merge_failure() {
+        let (c, s) = configured(0, 10, 4);
+        let mut i = new_codec_candidate_index(&s).unwrap();
+        for n in 0..3 {
+            i.insert(source(n, n)).unwrap();
+        }
+        let path = run_path(&i, 0);
+        corrupt(&path, 128 + 80);
+        let before = c.temp.current();
+        assert!(i.insert(source(3, 3)).is_err());
+        assert!(i.finish_verified(&s).is_err());
+        assert!(path.exists());
+        assert!(c.temp.current() >= before);
+        drop(i);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+        assert_eq!(s.handle_usage().current, 7);
+    }
+    #[test]
+    fn every_operation_error_prevents_successful_source_completion() {
+        use crate::offload::session::{FaultAction, Operation};
+        for mode in 0..5 {
+            let (c, s) = configured(0, 128, 192);
+            let mut i = new_codec_candidate_index(&s).unwrap();
+            i.insert(source(1, 1)).unwrap();
+            match mode {
+                0 => {
+                    s.cancel();
+                    assert!(i.finish_verified(&s).is_err());
+                }
+                1 => {
+                    s.inject(Operation::Read, 0, FaultAction::Fail);
+                    assert!(
+                        i.for_each_candidate(0, &7u64.to_le_bytes(), 2, 0, &mut |_| Ok(()))
+                            .is_err()
+                    );
+                }
+                2 => {
+                    assert!(
+                        i.for_each_candidate(0, &7u64.to_le_bytes(), 2, 0, &mut |_| Err(
+                            Error::temp_limit("sink failure")
+                        ))
+                        .is_err()
+                    );
+                }
+                3 => {
+                    s.inject(Operation::Create, 0, FaultAction::Fail);
+                    assert!(i.insert(source(2, 2)).is_err());
+                }
+                _ => {
+                    assert!(i.insert(source(1, 2)).is_err());
+                }
+            }
+            assert!(i.finish_verified(&s).is_err());
+            drop(i);
+            s.retry_cleanup().unwrap();
+            assert_eq!(c.temp.current(), 0);
+            assert_eq!(s.file_usage().current, 0);
+            assert_eq!(s.handle_usage().current, 7);
+        }
+        let (_, s) = configured(0, 128, 192);
+        let (_, other) = configured(0, 128, 192);
+        let mut i = new_codec_candidate_index(&s).unwrap();
+        assert!(i.finish_verified(&other).is_err());
+        assert!(i.finish_verified(&s).is_err());
+        let (_, s) = configured(0, 128, 192);
+        let mut i = new_codec_candidate_index(&s).unwrap();
+        i.finish_verified(&s).unwrap();
+    }
+
+    #[test]
+    fn key_kinds_nested_candidate_spills_and_source_limit_failures() {
+        use crate::offload::candidate_sink::ExternalCandidateSink;
+        use crate::offload::contracts::{
+            CandidateRow, CandidateRunSink, CandidateSink, Provenance,
+        };
+        let (c, s) = configured(1, 128, 192);
+        let mut index = new_codec_candidate_index(&s).unwrap();
+        let mut expected = Vec::new();
+        for n in 0..40 {
+            let kind = (n % 6) as u8;
+            let (key_len, meta_len) = expected_shape(kind).unwrap();
+            let key = [7; 32];
+            let metadata = [0; 32];
+            let entry =
+                IndexEntry::new(kind, &key[..key_len], n, n, &metadata[..meta_len]).unwrap();
+            expected.push(entry);
+            index.insert(entry).unwrap();
+        }
+        let mut sink = ExternalCandidateSink::with_chunk_limit(&s, 1).unwrap();
+        for kind in 0..6 {
+            let (key_len, _) = expected_shape(kind).unwrap();
+            let mut actual = Vec::new();
+            index
+                .for_each_candidate(kind, &[7; 32][..key_len], 40, 0, &mut |e| {
+                    actual.push(e);
+                    sink.emit(CandidateRow {
+                        candidate: crate::match_ir::MatchCandidate {
+                            src: e.position,
+                            dst: 100 + e.position,
+                            len: 30,
+                            insertion_ordinal: e.insertion_ordinal,
+                        },
+                        provenance: Provenance::EXTERNAL,
+                    })
+                })
+                .unwrap();
+            let mut wanted = expected
+                .iter()
+                .copied()
+                .filter(|e| e.key_kind == kind)
+                .collect::<Vec<_>>();
+            wanted.sort_unstable_by(index_entry_order);
+            assert_eq!(actual, wanted);
+        }
+        let store = sink.finish().unwrap();
+        index.finish_verified(&s).unwrap();
+        drop(store);
+        drop(index);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+        assert!(s.handle_usage().peak <= 128);
+
+        for small_temp in [true, false] {
+            let r = ResourceConfig {
+                memory: 16 * 1024 * 1024,
+                temp_limit: if small_temp { 128 } else { 1024 * 1024 },
+                ..ResourceConfig::default()
+            };
+            let mut c = ResourceContext::with_resources(&r).unwrap();
+            c.candidate_index_memtable_bytes = Some(0);
+            let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+            let mut i = new_codec_candidate_index(&s).unwrap();
+            let hold = if small_temp {
+                None
+            } else {
+                Some(
+                    s.acquire_handles(s.policy().max_handles - s.handle_usage().current)
+                        .unwrap(),
+                )
+            };
+            assert!(i.insert(source(1, 1)).is_err());
+            assert!(i.finish_verified(&s).is_err());
+            drop(hold);
+            drop(i);
+            s.retry_cleanup().unwrap();
+            assert_eq!(c.temp.current(), 0);
+            assert_eq!(s.file_usage().current, 0);
+        }
+    }
+
+    #[test]
+    fn retire_reverification_failure_closes_replacement_before_emergency_return() {
+        use crate::offload::session::{FaultAction, LifecycleEvent, Operation};
+        for failed_retire in [0, 1] {
+            let (c, s) = configured(0, 10, 4);
+            let mut index = new_codec_candidate_index(&s).unwrap();
+            for n in 0..3 {
+                index.insert(source(n, n)).unwrap();
+            }
+            s.clear_lifecycle();
+            s.inject(Operation::RetireVerify, failed_retire, FaultAction::Fail);
+            assert!(index.insert(source(3, 3)).is_err());
+            assert!(index.finish_verified(&s).is_err());
+            let events = s.lifecycle_events();
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|&&e| e == LifecycleEvent::RetireVerify)
+                    .count(),
+                failed_retire as usize + 1
+            );
+            let closed = events
+                .iter()
+                .position(|e| *e == LifecycleEvent::EmergencyFileClosed)
+                .unwrap();
+            let returned = events
+                .iter()
+                .position(|e| *e == LifecycleEvent::EmergencyReturned)
+                .unwrap();
+            assert!(
+                closed < returned,
+                "actual replacement close must precede emergency return: {events:?}"
+            );
+            assert!(s.emergency_merge().is_ok());
+            drop(index);
+            s.retry_cleanup().unwrap();
+            assert_eq!(c.temp.current(), 0);
+            assert_eq!(s.handle_usage().current, 7);
+            assert_eq!(s.file_usage().current, 0);
+        }
     }
 }
 

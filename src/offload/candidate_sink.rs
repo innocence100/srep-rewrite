@@ -2,7 +2,7 @@
 use super::contracts::{
     CandidateRow, CandidateRunSink, CandidateSink, RecordCursor, ReplayStore, TableBuilder,
 };
-use super::session::{CompressionSession, SpillMode, WorkspaceKind};
+use super::session::{CompressionSession, SessionId, SpillMode, WorkspaceKind};
 use super::sort::{CarrySet, Run, same_triple};
 use super::storage::{CandidateTableBuilder, CandidateTableStore, FixedRecord};
 use crate::error::{Error, Result};
@@ -18,11 +18,54 @@ pub(crate) struct CandidateMetrics {
     pub(crate) peak_live_rows: u64,
 }
 pub(crate) enum CandidateStore {
-    Ram {
-        rows: BudgetedVec<CandidateRow>,
-        cursors: Cell<u8>,
-    },
+    Ram(RamCandidateStore),
     Disk(CandidateTableStore),
+}
+/// Keep the charged rows and their construction identity inseparable. Sibling
+/// modules may move this owner, but cannot construct or relabel its payload.
+pub(crate) struct RamCandidateStore {
+    rows: BudgetedVec<CandidateRow>,
+    cursors: Cell<u8>,
+    session: SessionId,
+    input_len: u64,
+}
+impl CandidateStore {
+    /// Trusted construction identity, checked without any file access.
+    pub(crate) fn check_session(&self, expected: &CompressionSession) -> Result<()> {
+        match self {
+            Self::Ram(ram) if ram.session != expected.identity() => {
+                Err(Error::corrupt_index("cross-session candidate store"))
+            }
+            Self::Ram(_) => Ok(()),
+            Self::Disk(table) => table.check_session(expected),
+        }
+    }
+
+    pub(crate) fn input_len(&self) -> u64 {
+        match self {
+            Self::Ram(ram) => ram.input_len,
+            Self::Disk(table) => table.input_len(),
+        }
+    }
+
+    /// RAM has no encoded envelope; V1 checks canonical order/uniqueness for
+    /// both representations after this fresh disk digest verification.
+    pub(crate) fn verify_uncached(&self) -> Result<()> {
+        match self {
+            Self::Ram(_) => Ok(()),
+            Self::Disk(table) => table.verify_uncached(),
+        }
+    }
+
+    /// Fault injection for V1's canonical prepass tests, not an identity setter
+    /// or a mutable rows accessor. Absent from production builds.
+    #[cfg(test)]
+    pub(super) fn replace_ram_row_for_test(&mut self, index: usize, row: CandidateRow) {
+        let Self::Ram(ram) = self else {
+            panic!("RAM required for row fault injection")
+        };
+        ram.rows.as_mut_slice()[index] = row;
+    }
 }
 pub(crate) struct ExternalCandidateSink<'a> {
     session: &'a CompressionSession,
@@ -144,10 +187,12 @@ impl CandidateRunSink for ExternalCandidateSink<'_> {
         }
         if self.carry.is_empty() && self.session.policy().spill_mode != SpillMode::ForceSpill {
             self.canonicalize();
-            return Ok(CandidateStore::Ram {
+            return Ok(CandidateStore::Ram(RamCandidateStore {
                 rows: self.chunk,
                 cursors: Cell::new(0),
-            });
+                session: self.session.identity(),
+                input_len: self.input_len,
+            }));
         }
         self.flush()?;
         match self.carry.finish(self.session, same_triple)? {
@@ -191,14 +236,14 @@ impl RecordCursor<CandidateRow> for RamCursor<'_> {
 impl ReplayStore<CandidateRow> for CandidateStore {
     fn len(&self) -> u64 {
         match self {
-            Self::Ram { rows, .. } => rows.len() as u64,
+            Self::Ram(ram) => ram.rows.len() as u64,
             Self::Disk(s) => s.len(),
         }
     }
     fn cursor(&self) -> Result<Box<dyn RecordCursor<CandidateRow> + '_>> {
         match self {
             Self::Disk(s) => s.cursor(),
-            Self::Ram { rows, cursors } => {
+            Self::Ram(RamCandidateStore { rows, cursors, .. }) => {
                 if cursors.get() >= 4 {
                     return Err(Error::memory_limit("RAM cursor limit"));
                 }

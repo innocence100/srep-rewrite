@@ -201,4 +201,19 @@ mod tests {
             crate::error::ErrorKind::InvalidMatch
         );
     }
+
+    #[test]
+    fn invalid_source_is_rejected_before_identical_destination_representative() {
+        let input = b"abcdefghijklmnop".repeat(256);
+        let resources = ResourceConfig::default();
+        let context = ResourceContext::with_resources(&resources).unwrap();
+        let spool = spool_input(Cursor::new(&input), &resources, &context).unwrap();
+        let mut candidates = BudgetedVec::new(&context.memory).unwrap();
+        // The smaller source is byte-valid.  The later source is not; a
+        // destination-only representative reduction must not hide it.
+        candidates.push(candidate(0, 256, 30, 8)).unwrap();
+        candidates.push(candidate(1, 256, 30, 2)).unwrap();
+        let error = validate_candidates(&spool, &mut candidates, 2).unwrap_err();
+        assert_eq!(error.kind(), crate::error::ErrorKind::InvalidMatch);
+    }
 }

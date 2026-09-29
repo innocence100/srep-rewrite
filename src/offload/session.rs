@@ -2,7 +2,8 @@
 use crate::config::ResourceConfig;
 use crate::error::{Error, Result};
 use crate::resource::{BudgetedVec, MemoryBudget, Reservation, ResourceContext, TempBudget};
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -245,6 +246,32 @@ struct Workspace {
     publication: RefCell<BudgetedVec<u8>>,
     _control: Reservation,
 }
+
+/// A fixed-capacity allocation lent to one source index. Returning the loan
+/// transfers the SAME BudgetedVec/reservation; no byte/typed conversion or new
+/// allocation occurs on the next base/overlay index.
+pub(crate) struct SourceLoan<'a, T> {
+    value: Option<BudgetedVec<T>>,
+    slot: &'a RefCell<Option<BudgetedVec<T>>>,
+}
+impl<T> Deref for SourceLoan<'_, T> {
+    type Target = BudgetedVec<T>;
+    fn deref(&self) -> &Self::Target {
+        self.value.as_ref().unwrap()
+    }
+}
+impl<T> DerefMut for SourceLoan<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value.as_mut().unwrap()
+    }
+}
+impl<T> Drop for SourceLoan<'_, T> {
+    fn drop(&mut self) {
+        let mut value = self.value.take().unwrap();
+        value.clear_with_capacity();
+        *self.slot.borrow_mut() = Some(value);
+    }
+}
 impl Workspace {
     fn new(memory: &MemoryBudget, memtable_override: Option<u64>) -> Result<Self> {
         const MIB: u64 = 1024 * 1024;
@@ -313,6 +340,20 @@ pub(crate) enum Operation {
     CopyRead,
     CopyWrite,
     CopyFlush,
+    RetireVerify,
+}
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LifecycleEvent {
+    EmergencyFileClosed,
+    EmergencyReturned,
+    RetireVerify,
+}
+#[cfg(test)]
+#[derive(Debug)]
+struct Lifecycle {
+    events: [Option<LifecycleEvent>; 32],
+    len: usize,
 }
 #[cfg(test)]
 #[derive(Clone, Copy, Debug)]
@@ -349,6 +390,13 @@ pub(crate) struct CompressionSession {
     #[cfg(test)]
     fault: Arc<Mutex<[Option<Fault>; 4]>>,
     cleanup: Arc<CleanupRegistry>,
+    source_memtable_pool: RefCell<Option<BudgetedVec<crate::candidate_index::IndexEntry>>>,
+    source_cache_pool: RefCell<Option<BudgetedVec<u8>>>,
+    source_filter_pool: RefCell<Option<BudgetedVec<u8>>>,
+    source_initialized: Cell<bool>,
+    source_failed: Cell<bool>,
+    #[cfg(test)]
+    lifecycle: Arc<Mutex<Lifecycle>>,
 }
 impl CompressionSession {
     pub(crate) fn new(
@@ -397,6 +445,16 @@ impl CompressionSession {
             #[cfg(test)]
             fault: Arc::new(Mutex::new(std::array::from_fn(|_| None))),
             cleanup: Arc::new(CleanupRegistry::new()),
+            source_memtable_pool: RefCell::new(None),
+            source_cache_pool: RefCell::new(None),
+            source_filter_pool: RefCell::new(None),
+            source_initialized: Cell::new(false),
+            source_failed: Cell::new(false),
+            #[cfg(test)]
+            lifecycle: Arc::new(Mutex::new(Lifecycle {
+                events: [None; 32],
+                len: 0,
+            })),
         })
     }
     pub(crate) fn memory(&self) -> &MemoryBudget {
@@ -426,6 +484,68 @@ impl CompressionSession {
     }
     pub(crate) fn next_generation(&self) -> Result<u64> {
         next_checked(&self.generation)
+    }
+    pub(crate) fn source_failed(&self) {
+        self.source_failed.set(true);
+    }
+    fn initialize_source_pools(&self) -> Result<()> {
+        self.check_cancelled()?;
+        if self.source_failed.get() {
+            return Err(Error::temp_storage_context(
+                "source workspace session failed",
+            ));
+        }
+        if self.source_initialized.get() {
+            return Ok(());
+        }
+        // Mark before moving buffers: any partial initialization failure is
+        // terminal and cannot allocate a second unaccounted replacement set.
+        self.source_initialized.set(true);
+        let result = (|| {
+            let memtable = if self.candidate_index_memtable_bytes
+                < std::mem::size_of::<crate::candidate_index::IndexEntry>() as u64
+            {
+                BudgetedVec::new(&self.memory)?
+            } else {
+                self.take_typed_workspace(WorkspaceKind::SourceMemtable)?
+            };
+            let cache = self.take_typed_workspace(WorkspaceKind::SourceCache)?;
+            let filter = self.take_typed_workspace(WorkspaceKind::SourceFilter)?;
+            *self.source_memtable_pool.borrow_mut() = Some(memtable);
+            *self.source_cache_pool.borrow_mut() = Some(cache);
+            *self.source_filter_pool.borrow_mut() = Some(filter);
+            Ok(())
+        })();
+        if result.is_err() {
+            self.source_failed.set(true);
+        }
+        result
+    }
+    fn loan<'a, T>(
+        &'a self,
+        slot: &'a RefCell<Option<BudgetedVec<T>>>,
+    ) -> Result<SourceLoan<'a, T>> {
+        self.initialize_source_pools()?;
+        let value = slot
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source loan slot busy"))?
+            .take()
+            .ok_or_else(|| Error::temp_storage_context("source workspace already in use"))?;
+        Ok(SourceLoan {
+            value: Some(value),
+            slot,
+        })
+    }
+    pub(crate) fn source_memtable(
+        &self,
+    ) -> Result<SourceLoan<'_, crate::candidate_index::IndexEntry>> {
+        self.loan(&self.source_memtable_pool)
+    }
+    pub(crate) fn source_cache(&self) -> Result<SourceLoan<'_, u8>> {
+        self.loan(&self.source_cache_pool)
+    }
+    pub(crate) fn source_filter(&self) -> Result<SourceLoan<'_, u8>> {
+        self.loan(&self.source_filter_pool)
     }
     pub(crate) fn workspace(&self, kind: WorkspaceKind) -> Result<RefMut<'_, [u8]>> {
         self.check_cancelled()?;
@@ -525,6 +645,8 @@ impl CompressionSession {
         Ok(EmergencyMerge {
             slot: &self.emergency,
             lease: Some(lease),
+            #[cfg(test)]
+            lifecycle: self.lifecycle.clone(),
         })
     }
     pub(crate) fn handle_usage(&self) -> CountSnapshot {
@@ -586,11 +708,24 @@ impl CompressionSession {
             temp: self.temp.clone(),
             cleanup: self.cleanup.clone(),
             #[cfg(test)]
+            lifecycle: self.lifecycle.clone(),
+            #[cfg(test)]
             fault: self.fault.clone(),
         }
     }
     pub(crate) fn retry_cleanup(&self) -> Result<()> {
         self.cleanup.retry()
+    }
+    #[cfg(test)]
+    pub(crate) fn clear_lifecycle(&self) {
+        let mut l = self.lifecycle.lock().unwrap();
+        l.events = [None; 32];
+        l.len = 0;
+    }
+    #[cfg(test)]
+    pub(crate) fn lifecycle_events(&self) -> Vec<LifecycleEvent> {
+        let l = self.lifecycle.lock().unwrap();
+        l.events[..l.len].iter().flatten().copied().collect()
     }
 }
 /// Shared operation state held by session-created file owners, even if the
@@ -603,8 +738,19 @@ pub(crate) struct SessionIo {
     cleanup: Arc<CleanupRegistry>,
     #[cfg(test)]
     fault: Arc<Mutex<[Option<Fault>; 4]>>,
+    #[cfg(test)]
+    lifecycle: Arc<Mutex<Lifecycle>>,
 }
 impl SessionIo {
+    #[cfg(test)]
+    pub(crate) fn note_lifecycle(&self, event: LifecycleEvent) {
+        let mut l = self.lifecycle.lock().unwrap();
+        let at = l.len;
+        if at < l.events.len() {
+            l.events[at] = Some(event);
+            l.len += 1;
+        }
+    }
     pub(crate) fn reserve_io(&self, amount: u128) -> Result<IoReservation> {
         if self.cancelled.load(Ordering::Acquire) {
             return Err(Error::temp_storage_context("offload operation cancelled"));
@@ -752,6 +898,8 @@ impl Drop for CleanupRegistry {
 pub(crate) struct EmergencyMerge<'a> {
     slot: &'a RefCell<Option<ResourceLease>>,
     lease: Option<ResourceLease>,
+    #[cfg(test)]
+    lifecycle: Arc<Mutex<Lifecycle>>,
 }
 impl EmergencyMerge<'_> {
     /// The replacement is already open under this guard's emergency allowance.
@@ -792,6 +940,15 @@ impl EmergencyMerge<'_> {
 impl Drop for EmergencyMerge<'_> {
     fn drop(&mut self) {
         *self.slot.borrow_mut() = self.lease.take();
+        #[cfg(test)]
+        {
+            let mut l = self.lifecycle.lock().unwrap();
+            let at = l.len;
+            if at < l.events.len() {
+                l.events[at] = Some(LifecycleEvent::EmergencyReturned);
+                l.len += 1;
+            }
+        }
     }
 }
 
@@ -1016,5 +1173,52 @@ mod tests {
             assert_eq!(clone.candidate_index_spill_count(), 2);
             assert_eq!(s.candidate_index_spill_count(), 2);
         }
+    }
+
+    #[test]
+    fn source_loans_return_identical_allocations_and_exclude_concurrent_owners() {
+        let r = small();
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let (mp, cp, fp, used) = {
+            let m = s.source_memtable().unwrap();
+            let mut cache = s.source_cache().unwrap();
+            let mut filter = s.source_filter().unwrap();
+            assert!(s.source_memtable().is_err());
+            assert!(s.source_cache().is_err());
+            assert!(s.source_filter().is_err());
+            let n = cache.capacity();
+            cache.resize(n, 99).unwrap();
+            let n = filter.capacity();
+            filter.resize(n, 255).unwrap();
+            (
+                m.as_slice().as_ptr(),
+                cache.as_slice().as_ptr(),
+                filter.as_slice().as_ptr(),
+                c.memory.current(),
+            )
+        };
+        assert_eq!(c.memory.current(), used);
+        {
+            let m = s.source_memtable().unwrap();
+            let mut cache = s.source_cache().unwrap();
+            let mut filter = s.source_filter().unwrap();
+            assert_eq!(m.as_slice().as_ptr(), mp);
+            assert_eq!(cache.as_slice().as_ptr(), cp);
+            assert_eq!(filter.as_slice().as_ptr(), fp);
+            assert!(m.is_empty());
+            assert!(cache.is_empty());
+            assert!(filter.is_empty());
+            let n = cache.capacity();
+            cache.resize(n, 0).unwrap();
+            let n = filter.capacity();
+            filter.resize(n, 0).unwrap();
+            assert!(cache.iter().all(|b| *b == 0));
+            assert!(filter.iter().all(|b| *b == 0));
+            let _candidate = s.workspace(WorkspaceKind::Candidate).unwrap();
+            assert_eq!(c.memory.current(), used);
+        }
+        drop(s);
+        assert_eq!(c.memory.current(), 0);
     }
 }
