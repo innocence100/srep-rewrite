@@ -19,6 +19,393 @@ use crate::v3::compression_stats_from_header;
 
 const SPOOL_CHUNK: usize = 64 * 1024;
 
+/// Bounded private writer entry. No public bytes are written here. B0 publishes
+/// the returned stage only after CopyPermit preflight succeeds.
+pub(crate) fn stage_selected(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    selected: &crate::offload::matches::DiskSelectedStore,
+    session: &crate::offload::session::CompressionSession,
+) -> Result<(crate::codec::SealedStagedFile, CompressionStats)> {
+    let result = stage_selected_inner(spool, config, selected, session, 4096);
+    match result {
+        Ok(value) => {
+            session.retry_cleanup()?;
+            Ok(value)
+        }
+        Err(error) => {
+            if let Err(cleanup) = session.retry_cleanup() {
+                eprintln!("{cleanup}");
+            }
+            Err(error)
+        }
+    }
+}
+
+struct StageOutput {
+    spool: TempSpool,
+    whole: blake3::Hasher,
+    encoded: GlobalDigest,
+}
+impl StageOutput {
+    fn append(&mut self, bytes: &[u8], encoded: bool) -> Result<()> {
+        self.spool.append(bytes)?;
+        self.whole.update(bytes);
+        if encoded {
+            self.encoded.update(bytes);
+        }
+        Ok(())
+    }
+    fn uleb(&mut self, n: u64) -> Result<()> {
+        let mut b = [0; MAX_ULEB128_LEN];
+        let len = encode_uleb128_to(&mut b, n)?;
+        self.append(&b[..len], true)
+    }
+}
+
+/// One reusable independently reopened input handle. Hashing and literal passes
+/// explicitly seek; their logical positions cannot interfere. Buffer is fixed.
+struct BoundedInput<'a> {
+    file: File,
+    _handle: crate::offload::session::ResourceLease,
+    _memory: crate::resource::Reservation,
+    session: &'a crate::offload::session::CompressionSession,
+    buffer: [u8; SPOOL_CHUNK],
+}
+impl<'a> BoundedInput<'a> {
+    fn new(
+        spool: &InputSpool,
+        session: &'a crate::offload::session::CompressionSession,
+    ) -> Result<Self> {
+        let handle = session.acquire_handles(1)?;
+        let memory = session.memory().reserve(SPOOL_CHUNK as u64 + 4096)?;
+        session.checkpoint(crate::offload::session::Operation::Open)?;
+        let file = spool._temp.reopen().map_err(Error::temp_storage)?;
+        Ok(Self {
+            file,
+            _handle: handle,
+            _memory: memory,
+            session,
+            buffer: [0; SPOOL_CHUNK],
+        })
+    }
+    fn range(
+        &mut self,
+        start: u64,
+        len: u64,
+        context: &'static str,
+        mut consume: impl FnMut(&[u8]) -> Result<()>,
+    ) -> Result<()> {
+        use crate::offload::session::Operation;
+        let mut permit = self.session.reserve_io(u128::from(len))?;
+        self.session.checkpoint(Operation::Seek)?;
+        self.file
+            .seek(SeekFrom::Start(start))
+            .map_err(Error::temp_storage)?;
+        let mut remaining = len;
+        while remaining != 0 {
+            let wanted = remaining.min(SPOOL_CHUNK as u64) as usize;
+            self.session.checkpoint(Operation::Read)?;
+            let n = match self.file.read(&mut self.buffer[..wanted]) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                r => r.map_err(|e| Error::map_eof(e, context))?,
+            };
+            if n == 0 {
+                return Err(Error::truncated(context));
+            }
+            permit.consume(n as u64)?;
+            consume(&self.buffer[..n])?;
+            remaining -= n as u64;
+        }
+        Ok(())
+    }
+}
+
+fn stage_selected_inner(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    selected: &crate::offload::matches::DiskSelectedStore,
+    session: &crate::offload::session::CompressionSession,
+    source_chunk: usize,
+) -> Result<(crate::codec::SealedStagedFile, CompressionStats)> {
+    use crate::offload::contracts::{ReplayStore, SelectedStore, SourceOrderBuilder};
+    use crate::offload::matches::DiskSourceOrderBuilder;
+    use crate::offload::session::Operation;
+    config.validate()?;
+    session.check_cancelled()?;
+    selected.verify(session)?;
+    if selected.input_len() != spool.len {
+        return Err(Error::invalid_match(
+            "selected input length differs from spool",
+        ));
+    }
+    let min = config.effective_min_match()?;
+    let max = config.header_max_distance();
+    let summary = selected.summary();
+    let mut cursor = selected.cursor()?;
+    let mut previous_end = 0;
+    let mut count = 0u64;
+    let mut covered = 0u64;
+    let mut expected_index = uleb_encoded_len(summary.count)?;
+    while let Some(item) = cursor.next()? {
+        session.check_cancelled()?;
+        validate_selected_matches(std::slice::from_ref(&item), spool.len, min, max)?;
+        if item.dst < previous_end || item.origin_match_id != count {
+            return Err(Error::invalid_match("selected stream order/ID invalid"));
+        }
+        let gap_bytes = uleb_encoded_len(item.dst - previous_end)?;
+        let distance_bytes = uleb_encoded_len(item.dst - item.src)?;
+        let length_bytes = uleb_encoded_len(item.len)?;
+        expected_index = expected_index
+            .checked_add(gap_bytes)
+            .and_then(|n| n.checked_add(distance_bytes))
+            .and_then(|n| n.checked_add(length_bytes))
+            .ok_or_else(|| Error::corrupt_index("IndexSection length overflows"))?;
+        previous_end = item
+            .dst
+            .checked_add(item.len)
+            .ok_or_else(|| Error::invalid_match("selected endpoint overflow"))?;
+        count = count
+            .checked_add(1)
+            .ok_or_else(|| Error::invalid_match("selected count overflow"))?;
+        covered = covered
+            .checked_add(item.len)
+            .ok_or_else(|| Error::invalid_match("selected coverage overflow"))?;
+    }
+    drop(cursor);
+    if count != summary.count
+        || covered != summary.covered_bytes
+        || spool.len.checked_sub(covered) != Some(summary.literal_bytes)
+    {
+        return Err(Error::corrupt_index("selected stream summary mismatch"));
+    }
+    let source = if config.layout == Layout::Future {
+        Some(DiskSourceOrderBuilder::with_chunk_records(source_chunk)?.build(selected, session)?)
+    } else {
+        None
+    };
+    let mut source_cursor = source.as_ref().map(|s| s.cursor_in(session)).transpose()?;
+    let mut source_position = 0u64;
+    let header = ArchiveHeader::from_config(config, spool.len)?;
+    let mut input = BoundedInput::new(spool, session)?;
+    let mut out = StageOutput {
+        spool: TempSpool::new_in_session(session)?,
+        whole: blake3::Hasher::new(),
+        encoded: GlobalDigest::encoded(header.checksum),
+    };
+    out.append(&encode_archive_header(&header)?, true)?;
+    let mut plaintext = GlobalDigest::plaintext(header.checksum);
+    let mut destination = selected.cursor()?;
+    let mut next = destination.next()?;
+    let mut carry = 0u64;
+    let mut payload_size = 0u64;
+    for block in 0..header.block_count()? {
+        session.check_cancelled()?;
+        let start = block
+            .checked_mul(header.block_size)
+            .ok_or_else(|| Error::invalid_match("block start overflows"))?;
+        let length = crate::format_v3::block_len_at(spool.len, header.block_size, block)?;
+        let end = start
+            .checked_add(length)
+            .ok_or_else(|| Error::invalid_match("block end overflows"))?;
+        let mut crc = Crc32c::new();
+        input.range(
+            start,
+            length,
+            "truncated v3 input spool plaintext",
+            |bytes| {
+                plaintext.update(bytes);
+                crc.update(bytes);
+                Ok(())
+            },
+        )?;
+        let before = out.spool.len;
+        if let Some(cursor) = source_cursor.as_mut() {
+            cursor.seek_row(source_position)?;
+            let first = source_position;
+            let mut limit = first;
+            while let Some(item) = cursor.next()? {
+                if item.src < start {
+                    return Err(Error::invalid_match("Future source outside owning block"));
+                }
+                if item.src >= end {
+                    break;
+                }
+                limit = limit
+                    .checked_add(1)
+                    .ok_or_else(|| Error::invalid_match("Future count overflow"))?;
+            }
+            out.uleb(limit - first)?;
+            cursor.seek_row(first)?;
+            for _ in first..limit {
+                let item = cursor
+                    .next()?
+                    .ok_or_else(|| Error::corrupt_index("Future source replay ended early"))?;
+                out.uleb(item.src - start)?;
+                out.uleb(item.dst - item.src)?;
+                out.uleb(item.len)?;
+            }
+            source_position = limit;
+        }
+        let mut position = start;
+        if config.layout == Layout::Io {
+            let take = carry.min(length);
+            carry -= take;
+            position += take;
+            while position < end {
+                if let Some(item) = next {
+                    if item.dst < position {
+                        return Err(Error::invalid_match("I/O destination cursor regressed"));
+                    }
+                    if item.dst == position {
+                        out.append(&[IO_MATCH_TAG], true)?;
+                        out.uleb(item.dst - item.src)?;
+                        out.uleb(item.len)?;
+                        let take = item.len.min(end - position);
+                        carry = item.len - take;
+                        position += take;
+                        next = destination.next()?;
+                        continue;
+                    }
+                }
+                let gap_end = next.map_or(end, |m| m.dst.min(end));
+                if gap_end <= position {
+                    return Err(Error::invalid_match("I/O empty literal gap"));
+                }
+                out.append(&[IO_LITERAL_TAG], true)?;
+                out.uleb(gap_end - position)?;
+                input.range(
+                    position,
+                    gap_end - position,
+                    "truncated v3 input spool literals",
+                    |b| out.append(b, true),
+                )?;
+                position = gap_end;
+            }
+        } else {
+            while position < end {
+                let Some(item) = next else {
+                    input.range(
+                        position,
+                        end - position,
+                        "truncated v3 input spool literals",
+                        |b| out.append(b, true),
+                    )?;
+                    break;
+                };
+                let item_end = item
+                    .dst
+                    .checked_add(item.len)
+                    .ok_or_else(|| Error::invalid_match("match endpoint overflow"))?;
+                if item_end <= position {
+                    next = destination.next()?;
+                    continue;
+                }
+                if item.dst >= end {
+                    input.range(
+                        position,
+                        end - position,
+                        "truncated v3 input spool literals",
+                        |b| out.append(b, true),
+                    )?;
+                    break;
+                }
+                if item.dst > position {
+                    input.range(
+                        position,
+                        item.dst - position,
+                        "truncated v3 input spool literals",
+                        |b| out.append(b, true),
+                    )?;
+                }
+                position = item_end.min(end);
+                if item_end <= end {
+                    next = destination.next()?;
+                }
+            }
+        }
+        out.append(&crc.finalize_le(), true)?;
+        payload_size = payload_size
+            .checked_add(out.spool.len - before)
+            .ok_or_else(|| Error::corrupt_record("payload size overflow"))?;
+    }
+    if carry != 0 || next.is_some() {
+        return Err(Error::invalid_match(
+            "unresolved selected destination at EOF",
+        ));
+    }
+    if source.as_ref().is_some_and(|s| s.len() != source_position) {
+        return Err(Error::invalid_match("Future registers not fully emitted"));
+    }
+    let body_end = out.spool.len;
+    let (index_offset, index_length) = if config.layout == Layout::Index {
+        out.uleb(summary.count)?;
+        let mut cursor = selected.cursor()?;
+        let mut previous_end = 0;
+        while let Some(item) = cursor.next()? {
+            out.uleb(item.dst - previous_end)?;
+            out.uleb(item.dst - item.src)?;
+            out.uleb(item.len)?;
+            previous_end = item.dst + item.len;
+        }
+        let written = out.spool.len - body_end;
+        if written != expected_index {
+            return Err(Error::corrupt_index("IndexSection replay length mismatch"));
+        }
+        (body_end, written)
+    } else {
+        (0, 0)
+    };
+    let tail_start = out.spool.len;
+    let archive_len = tail_start
+        .checked_add(tail_len(header.checksum) as u64)
+        .filter(|n| *n <= MAX_WIRE)
+        .ok_or_else(|| Error::invalid_config("archive length exceeds MAX_WIRE"))?;
+    if config.layout == Layout::Index {
+        if index_offset.checked_add(index_length) != Some(tail_start) {
+            return Err(Error::corrupt_index("Index locators inconsistent"));
+        }
+    } else if tail_start != body_end {
+        return Err(Error::corrupt_record("sequential body end inconsistent"));
+    }
+    let mut prefix = [0; TAIL_PREFIX_LEN];
+    prefix[..8].copy_from_slice(&TAIL_MAGIC);
+    prefix[8] = VERSION;
+    prefix[12..20].copy_from_slice(&archive_len.to_le_bytes());
+    prefix[20..28].copy_from_slice(&index_offset.to_le_bytes());
+    prefix[28..36].copy_from_slice(&index_length.to_le_bytes());
+    prefix[36..44].copy_from_slice(&body_end.to_le_bytes());
+    out.append(&prefix, true)?;
+    out.append(&plaintext.finalize(), true)?;
+    let encoded =
+        std::mem::replace(&mut out.encoded, GlobalDigest::encoded(header.checksum)).finalize();
+    out.append(&encoded, false)?;
+    if out.spool.len != archive_len {
+        return Err(Error::corrupt_record("staged length inconsistent"));
+    }
+    drop(destination);
+    drop(source_cursor);
+    if let Some(source) = &source {
+        source.verify(session)?;
+    }
+    selected.verify(session)?;
+    drop(source);
+    drop(input);
+    session.checkpoint(Operation::Flush)?;
+    out.spool.flush().map_err(Error::temp_storage)?;
+    let expected = *out.whole.finalize().as_bytes();
+    let sealed = crate::codec::SealedStagedFile::seal(out.spool, archive_len, expected, session)?;
+    let stats = compression_stats_from_header(
+        &header,
+        archive_len,
+        payload_size,
+        summary.count,
+        summary.covered_bytes,
+        summary.literal_bytes,
+    )?;
+    Ok((sealed, stats))
+}
+
 /// Validate `config`, build a [`ResourceContext`] from `config.resources`,
 /// spool input, and encode a v3 archive.
 pub fn compress_with_candidates<R, W, I>(
@@ -670,6 +1057,215 @@ mod tests {
     use std::io::Cursor;
     use std::path::PathBuf;
 
+    fn bounded_archive(
+        input: &[u8],
+        config: &CompressionConfig,
+        candidates: &[MatchCandidate],
+        chunk: usize,
+    ) -> (Vec<u8>, CompressionStats) {
+        use crate::offload::contracts::{
+            CandidateRow, CandidateRunSink, CandidateSink, CandidateValidator, Provenance,
+            Scheduler,
+        };
+        let context = ResourceContext::with_resources(&config.resources).unwrap();
+        let session = crate::offload::session::CompressionSession::new(
+            &context,
+            &config.resources,
+            crate::offload::session::OffloadPolicy::default(),
+        )
+        .unwrap();
+        let spool = spool_input(input, &config.resources, &context).unwrap();
+        let mut sink = crate::offload::candidate_sink::ExternalCandidateSink::with_input_len(
+            &session, spool.len, chunk,
+        )
+        .unwrap();
+        for &candidate in candidates {
+            sink.emit(CandidateRow {
+                candidate,
+                provenance: Provenance::EXTERNAL,
+            })
+            .unwrap();
+        }
+        let validated = crate::offload::normalize::Validator::new(
+            &spool,
+            config.effective_min_match().unwrap(),
+        )
+        .validate(sink.finish().unwrap(), &session)
+        .unwrap();
+        let builder = crate::offload::matches::DiskSelectedBuilder::new(
+            spool.len,
+            config.effective_min_match().unwrap(),
+            &session,
+        )
+        .unwrap();
+        let selected = crate::offload::schedule::DiskScheduler::new(builder)
+            .schedule(validated, &session)
+            .unwrap();
+        let (mut stage, stats) =
+            stage_selected_inner(&spool, config, &selected, &session, chunk.min(4096)).unwrap();
+        let permit = crate::codec::prepare_publication(&mut stage, &session).unwrap();
+        let mut out = Vec::new();
+        crate::codec::copy_staged_exact(&mut stage, &mut out, permit, &session).unwrap();
+        drop(stage);
+        drop(selected);
+        drop(spool);
+        session.retry_cleanup().unwrap();
+        assert_eq!(context.temp.current(), 0);
+        assert_eq!(session.handle_usage().current, 7);
+        assert_eq!(session.file_usage().current, 0);
+        drop(session);
+        assert_eq!(context.memory.current(), 0);
+        (out, stats)
+    }
+
+    #[test]
+    fn disk_scheduler_writer_matches_ram_bytes_all_layouts_checksums_and_methods() {
+        let triples = [(100, 120, 64), (0, 1000, 1100), (1000, 2100, 64)];
+        let data = materialize(2300, &triples);
+        let rows = [
+            candidate(100, 120, 64, 5),
+            candidate(0, 1000, 1100, 9),
+            candidate(1000, 2100, 64, 2),
+            candidate(0, 1000, 1100, 1),
+        ];
+        for method in [
+            Method::M0Rep,
+            Method::M1RollingCdc,
+            Method::M2Order1Cdc,
+            Method::M3FixedDigest,
+            Method::M4Reread,
+            Method::M5Exhaustive,
+        ] {
+            for layout in [Layout::Index, Layout::Future, Layout::Io] {
+                for checksum in [Checksum::Xxh3, Checksum::Blake3] {
+                    let mut config = CompressionConfig::for_method(method);
+                    config.layout = layout;
+                    config.checksum = checksum;
+                    config.block_size = 1024;
+                    config.min_match = 32;
+                    config.resources = test_resources();
+                    config.max_distance = Some(4096);
+                    let (expected, stats) = compress_bytes(&data, &config, rows);
+                    let (actual, got) = bounded_archive(&data, &config, &rows, 2);
+                    assert_eq!(actual, expected, "{method:?}/{layout:?}/{checksum:?}");
+                    assert_eq!(got, stats);
+                }
+            }
+        }
+    }
+    #[test]
+    fn bounded_empty_literal_carry_ties_and_page_sized_selected_stores() {
+        for layout in [Layout::Index, Layout::Future, Layout::Io] {
+            for checksum in [Checksum::Xxh3, Checksum::Blake3] {
+                let config = m1_config(layout, checksum);
+                for data in [
+                    Vec::new(),
+                    b"abc".to_vec(),
+                    (0..1025).map(|n| (n % 251) as u8).collect(),
+                ] {
+                    assert_eq!(
+                        bounded_archive(&data, &config, &[], 3),
+                        compress_bytes(&data, &config, [])
+                    );
+                }
+                let data = materialize(3300, &[(0, 1000, 2200)]);
+                let rows = [candidate(0, 1000, 2200, 0)];
+                assert_eq!(
+                    bounded_archive(&data, &config, &rows, 1),
+                    compress_bytes(&data, &config, rows)
+                );
+                let data = vec![0; 3300];
+                let rows = [
+                    candidate(0, 100, 60, 8),
+                    candidate(0, 100, 100, 1),
+                    candidate(0, 160, 100, 4),
+                    candidate(1, 160, 100, 0),
+                ];
+                assert_eq!(
+                    bounded_archive(&data, &config, &rows, 2),
+                    compress_bytes(&data, &config, rows)
+                );
+            }
+        }
+        let data = vec![0; 140_000];
+        let rows = (0..1100)
+            .map(|id| candidate((1099 - id) % 97, 200 + id * 100, 32, id))
+            .collect::<Vec<_>>();
+        for layout in [Layout::Index, Layout::Future, Layout::Io] {
+            let config = m1_config(layout, Checksum::Blake3);
+            assert_eq!(
+                bounded_archive(&data, &config, &rows, 17),
+                compress_bytes(&data, &config, rows.iter().copied())
+            );
+        }
+    }
+
+    fn selected_fixture<'a>(
+        s: &'a crate::offload::session::CompressionSession,
+    ) -> crate::offload::matches::DiskSelectedStore {
+        use crate::offload::contracts::{SelectedBuilder, SelectedSummary};
+        let mut b = crate::offload::matches::DiskSelectedBuilder::new(2048, 32, s).unwrap();
+        b.push(Match {
+            src: 0,
+            dst: 1024,
+            len: 32,
+            origin_match_id: 0,
+        })
+        .unwrap();
+        b.finish(SelectedSummary {
+            count: 1,
+            covered_bytes: 32,
+            literal_bytes: 2016,
+        })
+        .unwrap()
+    }
+    #[test]
+    fn bounded_writer_failures_publish_nothing_and_release_stage_resources() {
+        use crate::offload::session::{CompressionSession, FaultAction, OffloadPolicy, Operation};
+        for operation in [Operation::Read, Operation::Write, Operation::Flush] {
+            let config = m1_config(Layout::Index, Checksum::Xxh3);
+            let c = ResourceContext::with_resources(&config.resources).unwrap();
+            let s =
+                CompressionSession::new(&c, &config.resources, OffloadPolicy::default()).unwrap();
+            let spool = spool_input(&vec![0; 2048][..], &config.resources, &c).unwrap();
+            let selected = selected_fixture(&s);
+            let before = c.temp.current();
+            s.inject(operation, 0, FaultAction::Fail);
+            assert!(stage_selected(&spool, &config, &selected, &s).is_err());
+            s.retry_cleanup().unwrap();
+            assert_eq!(c.temp.current(), before);
+            drop(selected);
+            drop(spool);
+            drop(s);
+            assert_eq!(c.temp.current(), 0);
+            assert_eq!(c.memory.current(), 0);
+        }
+        let config = m1_config(Layout::Future, Checksum::Xxh3);
+        let c = ResourceContext::with_resources(&config.resources).unwrap();
+        let s = CompressionSession::new(&c, &config.resources, OffloadPolicy::default()).unwrap();
+        let spool = spool_input(&vec![0; 2048][..], &config.resources, &c).unwrap();
+        let selected = selected_fixture(&s);
+        spool.file.set_len(7).unwrap();
+        assert!(stage_selected(&spool, &config, &selected, &s).is_err());
+        s.retry_cleanup().unwrap();
+        let before = c.memory.current();
+        let held = c.memory.reserve(c.memory.limit() - before).unwrap();
+        assert!(stage_selected(&spool, &config, &selected, &s).is_err());
+        drop(held);
+        let held = s
+            .acquire_handles(s.policy().max_handles - s.handle_usage().current)
+            .unwrap();
+        assert!(stage_selected(&spool, &config, &selected, &s).is_err());
+        drop(held);
+        s.cancel();
+        assert!(stage_selected(&spool, &config, &selected, &s).is_err());
+        drop(selected);
+        drop(spool);
+        drop(s);
+        assert_eq!(c.temp.current(), 0);
+        assert_eq!(c.memory.current(), 0);
+    }
+
     const TEST_TEMP: &str = "/tmp/opencode/v3-writer";
 
     fn test_resources() -> ResourceConfig {
@@ -1308,5 +1904,98 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::InvalidMatch);
+    }
+
+    #[test]
+    fn bounded_writer_temp_distance_and_cleanup_failure_contracts() {
+        use crate::offload::session::{CompressionSession, FaultAction, OffloadPolicy, Operation};
+        let mut config = m1_config(Layout::Index, Checksum::Blake3);
+        let c = ResourceContext::with_resources(&config.resources).unwrap();
+        let s = CompressionSession::new(&c, &config.resources, OffloadPolicy::default()).unwrap();
+        let spool = spool_input(&vec![0; 2048][..], &config.resources, &c).unwrap();
+        let selected = selected_fixture(&s);
+        let before = c.temp.current();
+        let hold = c.temp.reserve(c.temp.limit() - before).unwrap();
+        let error = match stage_selected(&spool, &config, &selected, &s) {
+            Err(e) => e,
+            Ok(_) => panic!("temp limit must fail"),
+        };
+        assert_eq!(error.kind(), ErrorKind::TempBudgetExceeded);
+        drop(hold);
+        assert_eq!(c.temp.current(), before);
+        config.max_distance = Some(512);
+        let error = match stage_selected(&spool, &config, &selected, &s) {
+            Err(e) => e,
+            Ok(_) => panic!("selected distance must fail"),
+        };
+        assert_eq!(error.kind(), ErrorKind::InvalidMatch);
+        config.max_distance = None;
+        s.inject(Operation::Write, 0, FaultAction::Fail);
+        s.inject(Operation::Remove, 0, FaultAction::Fail);
+        assert!(stage_selected(&spool, &config, &selected, &s).is_err());
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), before);
+        drop(selected);
+        drop(spool);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+        assert_eq!(s.handle_usage().current, 7);
+        drop(s);
+        assert_eq!(c.memory.current(), 0);
+    }
+
+    #[test]
+    fn bounded_input_error_accounting_and_writer_digest_preflight() {
+        use crate::offload::session::{CompressionSession, FaultAction, OffloadPolicy, Operation};
+        let config = m1_config(Layout::Index, Checksum::Blake3);
+        let c = ResourceContext::with_resources(&config.resources).unwrap();
+        let s = CompressionSession::new(&c, &config.resources, OffloadPolicy::default()).unwrap();
+        let spool = spool_input(&vec![0; 2048][..], &config.resources, &c).unwrap();
+        let selected = selected_fixture(&s);
+        {
+            let mut input = BoundedInput::new(&spool, &s).unwrap();
+            let before = s.io_used();
+            s.inject(Operation::Read, 0, FaultAction::Fail);
+            assert!(input.range(0, 10, "literal", |_| Ok(())).is_err());
+            assert_eq!(s.io_used(), before);
+            assert_eq!(s.io_reserved(), 0);
+            input.range(0, 7, "literal", |_| Ok(())).unwrap();
+            assert_eq!(s.io_used() - before, 7);
+        }
+        let (mut stage, _) = stage_selected(&spool, &config, &selected, &s).unwrap();
+        // The expected digest came from appends, not a disk-derived seal hash.
+        // Mutating actual stage without changing length must fail preflight.
+        {
+            let dir = s.temp_directory().unwrap();
+            for entry in std::fs::read_dir(&*dir).unwrap() {
+                let path = entry.unwrap().path();
+                let mut f = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(path)
+                    .unwrap();
+                let mut prefix = [0; 8];
+                f.read_exact(&mut prefix).unwrap();
+                if &prefix != b"SRPOFF01" {
+                    f.seek(SeekFrom::Start(80)).unwrap();
+                    f.write_all(&[255]).unwrap();
+                    f.flush().unwrap();
+                    break;
+                }
+            }
+        }
+        assert_eq!(
+            crate::codec::prepare_publication(&mut stage, &s)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::CorruptRecord
+        );
+        assert_eq!(s.io_reserved(), 0);
+        drop(stage);
+        drop(selected);
+        drop(spool);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
+        assert_eq!(s.handle_usage().current, 7);
     }
 }

@@ -7,6 +7,7 @@
 
 pub(crate) mod candidate_sink;
 pub(crate) mod contracts;
+pub(crate) mod matches;
 pub(crate) mod normalize;
 pub(crate) mod schedule;
 pub(crate) mod session;
