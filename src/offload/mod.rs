@@ -5,8 +5,11 @@
 //! contracts so the finder, storage, scheduler, and writer stages cannot
 //! accidentally exchange borrowed data from an evictable cache.
 
+pub(crate) mod candidate_sink;
 pub(crate) mod contracts;
 pub(crate) mod session;
+pub(crate) mod sort;
+pub(crate) mod storage;
 
 #[cfg(test)]
 mod tests;

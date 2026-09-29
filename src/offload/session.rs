@@ -59,7 +59,12 @@ impl OffloadPolicy {
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SessionId(u64);
+pub(crate) struct SessionId(u64, [u8; 16]);
+impl SessionId {
+    pub(crate) fn wire_tag(self) -> [u8; 16] {
+        self.1
+    }
+}
 fn next_checked(counter: &AtomicU64) -> Result<u64> {
     counter
         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_add(1))
@@ -368,7 +373,13 @@ impl CompressionSession {
             temp: context.temp.clone(),
             resources: resources.clone(),
             policy,
-            identity: SessionId(next_checked(&NEXT_SESSION)?),
+            identity: {
+                let number = next_checked(&NEXT_SESSION)?;
+                let mut nonce = [0; 16];
+                getrandom::fill(&mut nonce)
+                    .map_err(|e| Error::temp_storage_context(e.to_string()))?;
+                SessionId(number, nonce)
+            },
             generation: AtomicU64::new(0),
             io: Arc::new(IoLedger {
                 state: Mutex::new(IoSnapshot::default()),
@@ -659,7 +670,10 @@ impl SessionIo {
         self.temp.reserve(0).expect("zero temp reservation")
     }
     pub(crate) fn defer_cleanup(&self, entry: CleanupEntry) {
-        self.cleanup.insert(entry);
+        self.cleanup.insert(entry, None);
+    }
+    pub(crate) fn defer_cleanup_with_metadata(&self, entry: CleanupEntry, metadata: Reservation) {
+        self.cleanup.insert(entry, Some(metadata));
     }
 }
 #[derive(Debug)]
@@ -671,7 +685,7 @@ pub(crate) struct CleanupEntry {
 }
 #[derive(Debug)]
 struct CleanupRegistry {
-    entries: Mutex<[Option<CleanupEntry>; 192]>,
+    entries: Mutex<[Option<(CleanupEntry, Option<Reservation>)>; 192]>,
 }
 impl CleanupRegistry {
     fn new() -> Self {
@@ -679,22 +693,22 @@ impl CleanupRegistry {
             entries: Mutex::new(std::array::from_fn(|_| None)),
         }
     }
-    fn insert(&self, entry: CleanupEntry) {
+    fn insert(&self, entry: CleanupEntry, metadata: Option<Reservation>) {
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(slot) = entries.iter_mut().find(|v| v.is_none()) {
-            *slot = Some(entry);
+            *slot = Some((entry, metadata));
         } else {
             // File slots are capped at192 and held by entries, so unreachable
             // under the ownership protocol. Fail closed if an owner violates it.
             eprintln!("SREP_E_TEMP_STORAGE: cleanup registry full; budget quarantined");
-            std::mem::forget(entry);
+            std::mem::forget((entry, metadata));
         }
     }
     fn retry(&self) -> Result<()> {
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let mut failed = false;
         for slot in entries.iter_mut() {
-            if let Some(entry) = slot {
+            if let Some((entry, _metadata)) = slot {
                 match std::fs::remove_file(&entry.path) {
                     Ok(()) => {
                         *slot = None;
