@@ -460,6 +460,17 @@ impl CompressionSession {
     pub(crate) fn memory(&self) -> &MemoryBudget {
         &self.memory
     }
+    /// Existing exact accelerators take ResourceContext; this view shares the
+    /// same ledgers/counter rather than creating fresh resource budgets.
+    pub(crate) fn finder_context(&self) -> ResourceContext {
+        ResourceContext {
+            memory: self.memory.clone(),
+            temp: self.temp.clone(),
+            temp_dir: self.resources.temp_dir.clone(),
+            candidate_index_memtable_bytes: Some(self.candidate_index_memtable_bytes),
+            candidate_index_spills: self.candidate_index_spills.clone(),
+        }
+    }
     /// Zero/sub-record limits mean direct spill, not a rounded-up memtable.
     pub(crate) fn candidate_index_memtable_bytes(&self) -> u64 {
         self.candidate_index_memtable_bytes

@@ -12,6 +12,9 @@ use crate::match_ir::MatchCandidate;
 use crate::polynomial::polynomial_hash;
 use crate::resource::{BudgetedVec, ResourceContext};
 
+use crate::offload::contracts::{CandidateRow, CandidateSink, Provenance};
+use crate::offload::session::CompressionSession;
+
 const COMPARE_CHUNK: usize = 4096;
 const M5_KEY_KIND: u8 = 5;
 
@@ -67,6 +70,39 @@ pub(crate) fn find_matches_spooled(
     Ok(combined)
 }
 
+/// Private codec entry point.  The extension loop is shared with the raw
+/// adapter below; only the row destination and source-index implementation
+/// differ.  No pre-extension triple suppression is enabled here.
+pub(crate) fn emit_matches_spooled(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    session: &CompressionSession,
+    index: &mut dyn CandidateIndex,
+    sink: &mut dyn CandidateSink,
+    provenance: Provenance,
+) -> Result<u64> {
+    let mut emit = |candidate| {
+        sink.emit(CandidateRow {
+            candidate,
+            provenance,
+        })
+    };
+    enumerate_m5(
+        spool,
+        config,
+        context,
+        index,
+        Some(session),
+        false,
+        &mut emit,
+        polynomial_hash_at,
+        polynomial_hash_at,
+        compare_contiguous,
+        true,
+    )
+}
+
 #[allow(dead_code)]
 pub(crate) fn find_matches_spooled_compact(
     spool: &InputSpool,
@@ -90,6 +126,45 @@ where
     S: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
     C: FnMut(&mut dyn DataSource, u64, u64, u64) -> Result<bool>,
 {
+    let mut index = new_candidate_index(context, &config.resources)?;
+    let mut output = BudgetedVec::new(&context.memory)?;
+    let mut emit = |candidate| output.push(candidate);
+    let next = enumerate_m5(
+        spool,
+        config,
+        context,
+        &mut index,
+        None,
+        true,
+        &mut emit,
+        &mut full_hash_fn,
+        &mut slice_hash_fn,
+        &mut compare_fn,
+        accelerate_keys,
+    )?;
+    deduplicate_candidates(&mut output);
+    Ok((output, next))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enumerate_m5<F, S, C>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    index: &mut dyn CandidateIndex,
+    session: Option<&CompressionSession>,
+    deduplicate: bool,
+    emit: &mut dyn FnMut(MatchCandidate) -> Result<()>,
+    mut full_hash_fn: F,
+    mut slice_hash_fn: S,
+    mut compare_fn: C,
+    accelerate_keys: bool,
+) -> Result<u64>
+where
+    F: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
+    S: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
+    C: FnMut(&mut dyn DataSource, u64, u64, u64) -> Result<bool>,
+{
     let minimum = config.min_match;
     let seed = m5_seed_size(minimum)?;
     let target_count = if spool.len < seed {
@@ -101,16 +176,29 @@ where
             .and_then(|value| value.checked_add(1))
             .ok_or_else(|| Error::invalid_match("m5 target count overflows"))?
     };
-    let mut source = SpoolDataSource::new(spool)?;
-    let snapshot = InputSnapshot::try_new(spool, context)?;
-    let mut index = new_candidate_index(context, &config.resources)?;
-    let mut output = BudgetedVec::new(&context.memory)?;
-    let mut emission_filter = CandidateEmissionFilter::new(context)?;
+    let mut source = match session {
+        Some(session) => SpoolDataSource::new_in_session(spool, session)?,
+        None => SpoolDataSource::new(spool)?,
+    };
+    let headroom = session
+        .map(super::source::accelerator_headroom)
+        .transpose()?;
+    let snapshot = match session {
+        Some(session) => InputSnapshot::try_new_in_session(spool, context, session)?,
+        None => InputSnapshot::try_new(spool, context)?,
+    };
+    drop(headroom);
+    let mut emission_filter = deduplicate
+        .then(|| CandidateEmissionFilter::new(context))
+        .transpose()?;
     let mut source_ordinal = 0u64;
     let mut candidate_ordinal = 0u64;
     let mut next_source = 0u64;
 
     for target in 0..target_count {
+        if let Some(session) = session {
+            session.check_cancelled()?;
+        }
         while next_source < target {
             let source_end = next_source
                 .checked_add(seed)
@@ -195,8 +283,11 @@ where
                         candidate_ordinal = candidate_ordinal.checked_add(1).ok_or_else(|| {
                             Error::invalid_match("m5 insertion ordinal overflows")
                         })?;
-                        if emission_filter.first(candidate)? {
-                            output.push(candidate)?;
+                        if emission_filter
+                            .as_mut()
+                            .map_or(Ok(true), |filter| filter.first(candidate))?
+                        {
+                            emit(candidate)?;
                         }
                     }
                 }
@@ -205,8 +296,7 @@ where
         )?;
     }
 
-    deduplicate_candidates(&mut output);
-    Ok((output, candidate_ordinal))
+    Ok(candidate_ordinal)
 }
 
 fn deduplicate_candidates(output: &mut BudgetedVec<MatchCandidate>) {

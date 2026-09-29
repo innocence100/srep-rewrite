@@ -11,6 +11,9 @@ use crate::match_ir::{ExactIntervalFilter, MatchCandidate};
 use crate::polynomial::polynomial_hash;
 use crate::resource::{BudgetedVec, ResourceContext};
 
+use crate::offload::contracts::{CandidateRow, CandidateSink, Provenance};
+use crate::offload::session::CompressionSession;
+
 const COMPARE_CHUNK: usize = 4096;
 const CANONICAL_KEY_RESERVATION: u64 = 128;
 
@@ -169,14 +172,119 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
     mut emission_filter: Option<&mut CandidateEmissionFilter>,
     mut exact_filter: Option<&mut ExactIntervalFilter>,
 ) -> Result<()> {
+    let mut emit = |candidate: MatchCandidate| {
+        if let Some(filter) = exact_filter.as_deref_mut() {
+            filter.consider(output, candidate)
+        } else {
+            output.push(candidate)
+        }
+    };
+    find_matches_m0_spooled_with_parameters_emitter(
+        spool,
+        parameters,
+        context,
+        ordinal_start,
+        hash_fn,
+        &mut emission_filter,
+        &mut emit,
+    )
+    .map(|_| ())
+}
+
+/// Stream m0's complete candidate enumeration into an independent sink.
+///
+/// The returned ordinal is the next ordinal after *all* qualifying extensions,
+/// including rows the sink may suppress.  This is deliberately separate from
+/// the public `BudgetedVec` adapter: the codec path can use the private paged
+/// source index and an external candidate sink without changing enumeration.
+pub(crate) fn emit_matches_m0_spooled(
+    spool: &InputSpool,
+    parameters: &M0Parameters,
+    context: &ResourceContext,
+    ordinal_start: u64,
+    index: &mut dyn CandidateIndex,
+    session: &CompressionSession,
+    sink: &mut dyn CandidateSink,
+    provenance: Provenance,
+) -> Result<u64> {
+    let mut emit = |candidate: MatchCandidate| {
+        sink.emit(CandidateRow {
+            candidate,
+            provenance,
+        })
+    };
+    let mut emission_filter = None;
+    // The private sink performs canonical reduction after enumeration.  In
+    // particular, do not enable m0's historical uniform-target skip here.
+    find_matches_m0_spooled_with_parameters_emitter_and_index(
+        spool,
+        parameters,
+        context,
+        ordinal_start,
+        hash_at_dyn,
+        &mut emission_filter,
+        &mut emit,
+        index,
+        Some(session),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn find_matches_m0_spooled_with_parameters_emitter(
+    spool: &InputSpool,
+    parameters: &M0Parameters,
+    context: &ResourceContext,
+    ordinal_start: u64,
+    hash_fn: fn(&mut dyn DataSource, u64, u64) -> Result<u64>,
+    emission_filter: &mut Option<&mut CandidateEmissionFilter>,
+    emit: &mut dyn FnMut(MatchCandidate) -> Result<()>,
+) -> Result<u64> {
+    let mut index = new_candidate_index(context, &crate::config::ResourceConfig::default())?;
+    // The raw adapter retains the existing public index implementation.  The
+    // codec adapter below supplies its session-owned paged implementation.
+    find_matches_m0_spooled_with_parameters_emitter_and_index(
+        spool,
+        parameters,
+        context,
+        ordinal_start,
+        hash_fn,
+        emission_filter,
+        emit,
+        &mut index,
+        // Raw calls have no offload session; this argument is only used for
+        // cancellation in the private path.
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn find_matches_m0_spooled_with_parameters_emitter_and_index(
+    spool: &InputSpool,
+    parameters: &M0Parameters,
+    context: &ResourceContext,
+    ordinal_start: u64,
+    hash_fn: fn(&mut dyn DataSource, u64, u64) -> Result<u64>,
+    emission_filter: &mut Option<&mut CandidateEmissionFilter>,
+    emit: &mut dyn FnMut(MatchCandidate) -> Result<()>,
+    index: &mut dyn CandidateIndex,
+    session: Option<&CompressionSession>,
+) -> Result<u64> {
     let region = parameters.region;
     if region == 0 {
         return Err(Error::invalid_config("m0 region must be positive"));
     }
-    let mut source = SpoolDataSource::new(spool)?;
-    let snapshot = InputSnapshot::try_new(spool, context)?;
-    let mut representatives = BudgetedVec::new(&context.memory)?;
-    let mut index = new_candidate_index(context, &crate::config::ResourceConfig::default())?;
+    let mut source = match session {
+        Some(session) => SpoolDataSource::new_in_session(spool, session)?,
+        None => SpoolDataSource::new(spool)?,
+    };
+    let headroom = session
+        .map(super::source::accelerator_headroom)
+        .transpose()?;
+    let snapshot = match session {
+        Some(session) => InputSnapshot::try_new_in_session(spool, context, session)?,
+        None => InputSnapshot::try_new(spool, context)?,
+    };
+    drop(headroom);
     let eligible_starts = if spool.len < region {
         0
     } else {
@@ -186,66 +294,63 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
             .and_then(|value| value.checked_add(1))
             .ok_or_else(|| Error::invalid_match("m0 eligible start count overflows"))?
     };
-    let region_count = eligible_starts.div_ceil(region);
-    for region_id in 0..region_count {
-        let region_start = region_id
-            .checked_mul(region)
-            .ok_or_else(|| Error::invalid_match("m0 region start overflows"))?;
-        let region_end = region_start
-            .checked_add(region)
-            .ok_or_else(|| Error::invalid_match("m0 region end overflows"))?
-            .min(eligible_starts);
-        let mut best: Option<(u64, u64)> = None;
-        for position in region_start..region_end {
-            let hash = hash_fn(&mut source, position, region)?;
-            if best.is_none_or(|(best_hash, best_position)| {
-                hash > best_hash || (hash == best_hash && position < best_position)
-            }) {
-                best = Some((hash, position));
-            }
-        }
-        if let Some((hash, position)) = best {
-            debug_assert!(
-                representatives
-                    .as_slice()
-                    .last()
-                    .is_none_or(|&(previous, _)| previous < position)
-            );
-            representatives.push((position, hash))?;
-        }
-    }
-    debug_assert!(
-        representatives
-            .as_slice()
-            .windows(2)
-            .all(|pair| pair[0].0 < pair[1].0)
-    );
-
-    let mut next_representative = 0usize;
+    let mut next_region = 0u64;
+    let mut visible_representatives = 0u64;
+    let mut pending_representative: Option<(u64, u64)> = None;
     let mut ordinal = 0u64;
     let mut last_uniform_target: Option<(u8, u64)> = None;
     let mut last_visible_representatives: Option<usize> = None;
     for target in 0..eligible_starts {
-        while next_representative < representatives.len()
-            && representatives[next_representative].0 < target
-            && representative_complete(
-                representatives[next_representative].0,
-                region,
-                eligible_starts,
-            ) <= target
-        {
-            let (position, hash) = representatives[next_representative];
-            index.insert(IndexEntry::new(
-                0,
-                &hash.to_le_bytes(),
-                position,
-                next_representative as u64,
-                &[],
-            )?)?;
-            next_representative += 1;
+        if let Some(session) = session {
+            session.check_cancelled()?;
+        }
+        loop {
+            if let Some((position, hash)) = pending_representative {
+                if position >= target {
+                    break;
+                }
+                index.insert(IndexEntry::new(
+                    0,
+                    &hash.to_le_bytes(),
+                    position,
+                    visible_representatives,
+                    &[],
+                )?)?;
+                visible_representatives = visible_representatives
+                    .checked_add(1)
+                    .ok_or_else(|| Error::invalid_match("m0 representative ordinal overflows"))?;
+                pending_representative = None;
+            }
+            if !next_region
+                .checked_mul(region)
+                .and_then(|start| start.checked_add(region).map(|end| (start, end)))
+                .is_some_and(|(_, end)| end.min(eligible_starts) <= target)
+            {
+                break;
+            }
+            let region_start = next_region
+                .checked_mul(region)
+                .ok_or_else(|| Error::invalid_match("m0 region start overflows"))?;
+            let region_end = region_start
+                .checked_add(region)
+                .ok_or_else(|| Error::invalid_match("m0 region end overflows"))?
+                .min(eligible_starts);
+            let mut best: Option<(u64, u64)> = None;
+            for position in region_start..region_end {
+                let hash = hash_fn(&mut source, position, region)?;
+                if best.is_none_or(|(best_hash, best_position)| {
+                    hash > best_hash || (hash == best_hash && position < best_position)
+                }) {
+                    best = Some((hash, position));
+                }
+            }
+            pending_representative = best.map(|(hash, position)| (position, hash));
+            next_region = next_region
+                .checked_add(1)
+                .ok_or_else(|| Error::invalid_match("m0 region count overflows"))?;
         }
         let skip_uniform_target = emission_filter.is_some()
-            && last_visible_representatives == Some(next_representative)
+            && last_visible_representatives == Some(visible_representatives as usize)
             && snapshot.as_ref().is_some_and(|snapshot| {
                 last_uniform_target.is_some_and(|(byte, previous)| {
                     snapshot.byte_at(target) == Some(byte)
@@ -288,20 +393,16 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
                             true
                         };
                         if keep {
-                            if let Some(filter) = exact_filter.as_deref_mut() {
-                                filter.consider(output, candidate)?;
-                            } else {
-                                output.push(candidate)?;
-                            }
+                            emit(candidate)?;
                         }
                     }
                 }
                 Ok(())
             },
         )?;
-        last_visible_representatives = Some(next_representative);
+        last_visible_representatives = Some(visible_representatives as usize);
         if emission_filter.is_some()
-            && next_representative > 0
+            && visible_representatives > 0
             && let Some(snapshot) = snapshot.as_ref()
             && snapshot.region_is_uniform(target, region)
             && let Some(byte) = snapshot.byte_at(target)
@@ -311,7 +412,9 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
             last_uniform_target = None;
         }
     }
-    Ok(())
+    ordinal_start
+        .checked_add(ordinal)
+        .ok_or_else(|| Error::invalid_match("m0 insertion ordinal overflows"))
 }
 
 #[cfg(test)]
@@ -322,15 +425,6 @@ fn constant_hash_at(source: &mut dyn DataSource, position: u64, length: u64) -> 
     let count = count.min(bytes.len());
     source.read_at(position, &mut bytes[..count])?;
     Ok(0)
-}
-
-fn representative_complete(position: u64, region: u64, eligible_end: u64) -> u64 {
-    position
-        .checked_div(region)
-        .and_then(|region_id| region_id.checked_add(1))
-        .and_then(|region_id| region_id.checked_mul(region))
-        .unwrap_or(eligible_end)
-        .min(eligible_end)
 }
 
 fn hash_at(source: &mut dyn DataSource, position: u64, length: u64) -> Result<u64> {

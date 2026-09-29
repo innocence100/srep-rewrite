@@ -7,6 +7,9 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::match_ir::{ExactIntervalFilter, IdenticalIntervalFilter, MatchCandidate};
 use crate::resource::{BudgetedVec, ResourceContext};
 
+use crate::offload::contracts::{CandidateRow, CandidateSink, Provenance};
+use crate::offload::session::CompressionSession;
+
 use super::m0::{M0Parameters, find_matches_m0_spooled_with_parameters_into};
 use super::source::{DataSource, SpoolDataSource};
 
@@ -163,6 +166,13 @@ impl DataSource for SnapshotSource<'_> {
 
 impl FixedAcceleration {
     fn try_new(spool: &InputSpool, context: &ResourceContext) -> Result<Option<Self>> {
+        Self::try_new_inner(spool, context, None)
+    }
+    fn try_new_inner(
+        spool: &InputSpool,
+        context: &ResourceContext,
+        session: Option<&CompressionSession>,
+    ) -> Result<Option<Self>> {
         #[cfg(test)]
         if TEST_DISABLE_ACCELERATION.with(std::cell::Cell::get) {
             TEST_LAST_ACCELERATION_STATE.with(|state| state.set(Some(false)));
@@ -173,9 +183,13 @@ impl FixedAcceleration {
             available
                 .get()
                 .map(|available| {
-                    context
-                        .memory
-                        .reserve(context.memory.limit().saturating_sub(available))
+                    context.memory.reserve(
+                        context
+                            .memory
+                            .limit()
+                            .saturating_sub(context.memory.current())
+                            .saturating_sub(available),
+                    )
                 })
                 .transpose()
         })?;
@@ -192,10 +206,14 @@ impl FixedAcceleration {
                 Err(error) => return Err(error),
             };
             bytes.resize(length, 0)?;
-            let mut file = spool.file.try_clone().map_err(Error::temp_storage)?;
-            file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
-            file.read_exact(bytes.as_mut_slice())
-                .map_err(Error::temp_storage)?;
+            if let Some(session) = session {
+                super::source::read_snapshot(spool, session, bytes.as_mut_slice())?;
+            } else {
+                let mut file = spool.file.try_clone().map_err(Error::temp_storage)?;
+                file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
+                file.read_exact(bytes.as_mut_slice())
+                    .map_err(Error::temp_storage)?;
+            }
             #[cfg(test)]
             drop(_bytes_denial);
             #[cfg(test)]
@@ -693,12 +711,97 @@ fn find_m3_spooled_with_digest_filtered<D>(
 where
     D: FnMut(&mut dyn DataSource, u64, u64) -> Result<[u8; 16]>,
 {
+    let mut index = new_candidate_index(context, &config.resources)?;
+    let mut output = BudgetedVec::new(&context.memory)?;
+    let compact_filter_enabled = filter.is_some();
+    let mut emit = |candidate: Option<MatchCandidate>| {
+        let release_cache = output.len() == output.capacity() && output.capacity() >= 1_048_576;
+        let Some(candidate) = candidate else {
+            return Ok(release_cache);
+        };
+        if let Some(exact_filter) = exact_filter.as_deref_mut() {
+            exact_filter.consider(&mut output, candidate)
+        } else if let Some(filter) = filter.as_deref_mut() {
+            filter.consider(&mut output, candidate)
+        } else {
+            output.push(candidate)
+        }?;
+        Ok(release_cache)
+    };
+    let next = enumerate_m3(
+        spool,
+        config,
+        context,
+        &mut index,
+        &mut digest_fn,
+        &mut emit,
+        compact_filter_enabled,
+        None,
+    )?;
+    Ok((output, next))
+}
+
+pub(crate) fn emit_matches_m3_spooled<D>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    session: &CompressionSession,
+    index: &mut dyn CandidateIndex,
+    sink: &mut dyn CandidateSink,
+    provenance: Provenance,
+    mut digest_fn: D,
+) -> Result<u64>
+where
+    D: FnMut(&mut dyn DataSource, u64, u64) -> Result<[u8; 16]>,
+{
+    let mut emit = |candidate: Option<MatchCandidate>| {
+        let Some(candidate) = candidate else {
+            return Ok(false);
+        };
+        sink.emit(CandidateRow {
+            candidate,
+            provenance,
+        })?;
+        Ok(false)
+    };
+    session.check_cancelled()?;
+    enumerate_m3(
+        spool,
+        config,
+        context,
+        index,
+        &mut digest_fn,
+        &mut emit,
+        false,
+        Some(session),
+    )
+}
+
+fn enumerate_m3<D>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    index: &mut dyn CandidateIndex,
+    mut digest_fn: &mut D,
+    emit: &mut dyn FnMut(Option<MatchCandidate>) -> Result<bool>,
+    compact_filter_enabled: bool,
+    session: Option<&CompressionSession>,
+) -> Result<u64>
+where
+    D: FnMut(&mut dyn DataSource, u64, u64) -> Result<[u8; 16]>,
+{
     let seed = config
         .seed_size
         .ok_or_else(|| Error::invalid_config("seed-size is required for m3"))?;
     let q_min = checked_ceil_div(config.min_match, seed)?;
-    let snapshot = FixedAcceleration::try_new(spool, context)?;
-    let mut spool_source = SpoolDataSource::new(spool)?;
+    let mut spool_source = match session {
+        Some(session) => SpoolDataSource::new_in_session(spool, session)?,
+        None => SpoolDataSource::new(spool)?,
+    };
+    let headroom = session
+        .map(super::source::accelerator_headroom)
+        .transpose()?;
+    let snapshot = FixedAcceleration::try_new_inner(spool, context, session)?;
     let mut digest_cache =
         match SeedDigestCache::try_new(spool.len, seed, snapshot.is_some(), context) {
             Ok(cache) => cache,
@@ -707,20 +810,22 @@ where
             }
             Err(error) => return Err(error),
         };
-    let mut index = new_candidate_index(context, &config.resources)?;
-    let mut output = BudgetedVec::new(&context.memory)?;
     let mut source_ordinal = 0u64;
+    drop(headroom);
     let mut candidate_ordinal = 0u64;
     let mut next_source = 0u64;
     let mut last_uniform_target: Option<u64> = None;
     let mut last_visible_source: Option<u64> = None;
     for target in fixed_targets(spool.len, seed) {
+        if let Some(session) = session {
+            session.check_cancelled()?;
+        }
         let digest = if let Some(accelerator) = snapshot.as_ref() {
             let mut snapshot_source = SnapshotSource {
                 bytes: accelerator.bytes.as_slice(),
             };
             insert_visible_sources(
-                &mut index,
+                index,
                 &mut snapshot_source,
                 target,
                 seed,
@@ -730,7 +835,7 @@ where
                     digest_cache.get(&mut digest_fn, source, position, length)
                 },
             )?;
-            if filter.is_some()
+            if compact_filter_enabled
                 && last_visible_source == Some(next_source)
                 && let Some(previous) = last_uniform_target
                 && accelerator.same_uniform_run(previous, target, seed)?
@@ -740,7 +845,7 @@ where
             digest_cache.get(&mut digest_fn, &mut snapshot_source, target, seed)?
         } else {
             insert_visible_sources(
-                &mut index,
+                index,
                 &mut spool_source,
                 target,
                 seed,
@@ -896,26 +1001,17 @@ where
                         candidate_ordinal = candidate_ordinal.checked_add(1).ok_or_else(|| {
                             Error::invalid_match("m3 insertion ordinal overflows")
                         })?;
-                        if output.len() == output.capacity() && output.capacity() >= 1_048_576 {
+                        if emit(None)? {
                             digest_cache = SeedDigestCache::disabled(seed);
                         }
-                        if output.len() == output.capacity() && output.capacity() >= 1_048_576 {
-                            digest_cache = SeedDigestCache::disabled(seed);
-                        }
-                        if let Some(exact_filter) = exact_filter.as_deref_mut() {
-                            exact_filter.consider(&mut output, candidate)?;
-                        } else if let Some(filter) = filter.as_deref_mut() {
-                            filter.consider(&mut output, candidate)?;
-                        } else {
-                            output.push(candidate)?;
-                        }
+                        emit(Some(candidate))?;
                     }
                 }
                 Ok(())
             },
         )?;
         last_visible_source = Some(next_source);
-        last_uniform_target = if filter.is_some()
+        last_uniform_target = if compact_filter_enabled
             && let Some(accelerator) = snapshot.as_ref()
             && accelerator.uniform_run(target, seed)? >= seed
         {
@@ -924,7 +1020,7 @@ where
             None
         };
     }
-    Ok((output, candidate_ordinal))
+    Ok(candidate_ordinal)
 }
 
 #[cfg(test)]
@@ -952,11 +1048,60 @@ fn find_m4_spooled_with_hash_filtered<H>(
 where
     H: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
 {
+    let mut index = new_candidate_index(context, &config.resources)?;
+    let mut output = BudgetedVec::new(&context.memory)?;
+    let compact_filter_enabled = filter.is_some();
+    let mut emit = |candidate: Option<MatchCandidate>| {
+        let release_cache = output.len() == output.capacity() && output.capacity() >= 1_048_576;
+        let Some(candidate) = candidate else {
+            return Ok(release_cache);
+        };
+        if let Some(exact_filter) = exact_filter.as_deref_mut() {
+            exact_filter.consider(&mut output, candidate)
+        } else if let Some(filter) = filter.as_deref_mut() {
+            filter.consider(&mut output, candidate)
+        } else {
+            output.push(candidate)
+        }?;
+        Ok(release_cache)
+    };
+    let next = enumerate_m4(
+        spool,
+        config,
+        context,
+        &mut index,
+        &mut hash_fn,
+        &mut emit,
+        compact_filter_enabled,
+        None,
+    )?;
+    Ok((output, next))
+}
+
+fn enumerate_m4<H>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    index: &mut dyn CandidateIndex,
+    mut hash_fn: &mut H,
+    emit: &mut dyn FnMut(Option<MatchCandidate>) -> Result<bool>,
+    compact_filter_enabled: bool,
+    session: Option<&CompressionSession>,
+) -> Result<u64>
+where
+    H: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
+{
     let seed = config
         .seed_size
         .ok_or_else(|| Error::invalid_config("seed-size is required for m4"))?;
-    let snapshot = FixedAcceleration::try_new(spool, context)?;
-    let mut spool_source = SpoolDataSource::new(spool)?;
+    let mut spool_source = match session {
+        Some(session) => SpoolDataSource::new_in_session(spool, session)?,
+        None => SpoolDataSource::new(spool)?,
+    };
+    let headroom = session
+        .map(super::source::accelerator_headroom)
+        .transpose()?;
+    let snapshot = FixedAcceleration::try_new_inner(spool, context, session)?;
     let mut hash_cache: Option<BudgetedVec<Option<u64>>> = match snapshot.as_ref() {
         Some(_) => {
             let mut cache = match BudgetedVec::with_capacity(spool.len as usize, &context.memory) {
@@ -975,20 +1120,22 @@ where
         }
         None => None,
     };
-    let mut index = new_candidate_index(context, &config.resources)?;
-    let mut output = BudgetedVec::new(&context.memory)?;
     let mut source_ordinal = 0u64;
+    drop(headroom);
     let mut candidate_ordinal = 0u64;
     let mut next_source = 0u64;
     let mut last_uniform_target: Option<u64> = None;
     let mut last_visible_source: Option<u64> = None;
     for target in fixed_targets(spool.len, seed) {
+        if let Some(session) = session {
+            session.check_cancelled()?;
+        }
         let key = if let Some(accelerator) = snapshot.as_ref() {
             let mut snapshot_source = SnapshotSource {
                 bytes: accelerator.bytes.as_slice(),
             };
             insert_visible_sources_with_hash(
-                &mut index,
+                index,
                 &mut snapshot_source,
                 target,
                 seed,
@@ -998,7 +1145,7 @@ where
                     cached_hash(&mut hash_cache, &mut hash_fn, source, position, length)
                 },
             )?;
-            if filter.is_some()
+            if compact_filter_enabled
                 && last_visible_source == Some(next_source)
                 && let Some(previous) = last_uniform_target
                 && accelerator.same_uniform_run(previous, target, seed)?
@@ -1017,7 +1164,7 @@ where
             )
         } else {
             insert_visible_sources_with_hash(
-                &mut index,
+                index,
                 &mut spool_source,
                 target,
                 seed,
@@ -1098,26 +1245,17 @@ where
                         candidate_ordinal = candidate_ordinal.checked_add(1).ok_or_else(|| {
                             Error::invalid_match("m4 insertion ordinal overflows")
                         })?;
-                        if output.len() == output.capacity() && output.capacity() >= 1_048_576 {
+                        if emit(None)? {
                             hash_cache = None;
                         }
-                        if output.len() == output.capacity() && output.capacity() >= 1_048_576 {
-                            hash_cache = None;
-                        }
-                        if let Some(exact_filter) = exact_filter.as_deref_mut() {
-                            exact_filter.consider(&mut output, candidate)?;
-                        } else if let Some(filter) = filter.as_deref_mut() {
-                            filter.consider(&mut output, candidate)?;
-                        } else {
-                            output.push(candidate)?;
-                        }
+                        emit(Some(candidate))?;
                     }
                 }
                 Ok(())
             },
         )?;
         last_visible_source = Some(next_source);
-        last_uniform_target = if filter.is_some()
+        last_uniform_target = if compact_filter_enabled
             && let Some(accelerator) = snapshot.as_ref()
             && accelerator.uniform_run(target, seed)? >= seed
         {
@@ -1126,7 +1264,48 @@ where
             None
         };
     }
-    Ok((output, candidate_ordinal))
+    Ok(candidate_ordinal)
+}
+
+/// Codec-facing m4 seam.  The m4 core retains the exact public implementation
+/// and collision callback; this adapter gives the integration owner a sink
+/// boundary while the private index replacement is wired by the parent.
+/// `index` is intentionally accepted as part of the frozen seam so callers
+/// cannot accidentally use the public adaptive index on the bounded path.
+pub(crate) fn emit_matches_m4_spooled<H>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    session: &CompressionSession,
+    index: &mut dyn CandidateIndex,
+    sink: &mut dyn CandidateSink,
+    provenance: Provenance,
+    mut hash_fn: H,
+) -> Result<u64>
+where
+    H: FnMut(&mut dyn DataSource, u64, u64) -> Result<u64>,
+{
+    session.check_cancelled()?;
+    let mut emit = |candidate: Option<MatchCandidate>| {
+        let Some(candidate) = candidate else {
+            return Ok(false);
+        };
+        sink.emit(CandidateRow {
+            candidate,
+            provenance,
+        })?;
+        Ok(false)
+    };
+    enumerate_m4(
+        spool,
+        config,
+        context,
+        index,
+        &mut hash_fn,
+        &mut emit,
+        false,
+        Some(session),
+    )
 }
 
 struct SeedDigestCache {
@@ -1470,7 +1649,11 @@ fn m4_key(seed: u64, hash: u64) -> [u8; 16] {
     key
 }
 
-fn blake3_at(source: &mut dyn DataSource, position: u64, length: u64) -> Result<[u8; 16]> {
+pub(crate) fn blake3_at(
+    source: &mut dyn DataSource,
+    position: u64,
+    length: u64,
+) -> Result<[u8; 16]> {
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0u8; COMPARE_CHUNK];
     let mut offset = 0u64;
@@ -1494,7 +1677,11 @@ fn blake3_at(source: &mut dyn DataSource, position: u64, length: u64) -> Result<
         .expect("BLAKE3 digest width"))
 }
 
-fn polynomial_at(source: &mut dyn DataSource, position: u64, length: u64) -> Result<u64> {
+pub(crate) fn polynomial_at(
+    source: &mut dyn DataSource,
+    position: u64,
+    length: u64,
+) -> Result<u64> {
     let mut hash = 0u64;
     let mut buffer = [0u8; COMPARE_CHUNK];
     let mut offset = 0u64;

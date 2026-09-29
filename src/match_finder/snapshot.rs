@@ -116,14 +116,32 @@ pub(crate) struct ExactLce {
 
 impl InputSnapshot {
     pub(crate) fn try_new(spool: &InputSpool, context: &ResourceContext) -> Result<Option<Self>> {
+        Self::try_new_inner(spool, context, None)
+    }
+    pub(crate) fn try_new_in_session(
+        spool: &InputSpool,
+        context: &ResourceContext,
+        session: &crate::offload::session::CompressionSession,
+    ) -> Result<Option<Self>> {
+        Self::try_new_inner(spool, context, Some(session))
+    }
+    fn try_new_inner(
+        spool: &InputSpool,
+        context: &ResourceContext,
+        session: Option<&crate::offload::session::CompressionSession>,
+    ) -> Result<Option<Self>> {
         #[cfg(test)]
         let _test_memory_reservation = TEST_SNAPSHOT_MEMORY_BUDGET.with(|budget| {
             budget
                 .get()
                 .map(|available| {
-                    context
-                        .memory
-                        .reserve(context.memory.limit().saturating_sub(available))
+                    context.memory.reserve(
+                        context
+                            .memory
+                            .limit()
+                            .saturating_sub(context.memory.current())
+                            .saturating_sub(available),
+                    )
                 })
                 .transpose()
         })?;
@@ -153,10 +171,14 @@ impl InputSnapshot {
                 Err(error) => return Err(error),
             };
             bytes.resize(length, 0)?;
-            let mut file = spool.file.try_clone().map_err(Error::temp_storage)?;
-            file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
-            file.read_exact(bytes.as_mut_slice())
-                .map_err(Error::temp_storage)?;
+            if let Some(session) = session {
+                super::source::read_snapshot(spool, session, bytes.as_mut_slice())?;
+            } else {
+                let mut file = spool.file.try_clone().map_err(Error::temp_storage)?;
+                file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
+                file.read_exact(bytes.as_mut_slice())
+                    .map_err(Error::temp_storage)?;
+            }
             let run = match forward_run_table(bytes.as_slice(), context) {
                 Ok(run) => Some(run),
                 Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => None,

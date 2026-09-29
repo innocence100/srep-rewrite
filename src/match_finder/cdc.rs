@@ -8,6 +8,9 @@ use crate::match_ir::MatchCandidate;
 use crate::polynomial::polynomial_hash;
 use crate::resource::{BudgetedVec, MemoryBudget, ResourceContext};
 
+use crate::offload::contracts::{CandidateRow, CandidateSink, Provenance};
+use crate::offload::session::CompressionSession;
+
 use super::source::{DataSource, SpoolDataSource};
 
 const BLAKE3_KEY_LEN: usize = 24;
@@ -123,6 +126,73 @@ where
     let mut source = SpoolDataSource::new(spool)?;
     let mut index = new_candidate_index(context, &config.resources)?;
     let mut output = BudgetedVec::new(&context.memory)?;
+    let mut emit = |candidate| output.push(candidate);
+    enumerate_cdc(
+        spool,
+        config,
+        context,
+        method,
+        &mut source,
+        &mut index,
+        &mut digest_fn,
+        None,
+        &mut emit,
+    )?;
+    Ok(output)
+}
+
+/// Stream CDC candidates without retaining a block's boundary vector or the
+/// candidate output.  The private codec caller supplies its session-owned
+/// paged index and candidate sink.
+pub(crate) fn emit_matches_spooled_with_digest<D>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    context: &ResourceContext,
+    method: CdcMethod,
+    index: &mut dyn CandidateIndex,
+    session: &CompressionSession,
+    sink: &mut dyn CandidateSink,
+    provenance: Provenance,
+    mut digest_fn: D,
+) -> Result<u64>
+where
+    D: FnMut(&mut dyn DataSource, u64, u64) -> Result<[u8; 16]>,
+{
+    let mut source = SpoolDataSource::new_in_session(spool, session)?;
+    let mut emit = |candidate| {
+        sink.emit(CandidateRow {
+            candidate,
+            provenance,
+        })
+    };
+    enumerate_cdc(
+        spool,
+        config,
+        context,
+        method,
+        &mut source,
+        index,
+        &mut digest_fn,
+        Some(session),
+        &mut emit,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enumerate_cdc<D>(
+    spool: &InputSpool,
+    config: &CompressionConfig,
+    _context: &ResourceContext,
+    method: CdcMethod,
+    source: &mut dyn DataSource,
+    index: &mut dyn CandidateIndex,
+    digest_fn: &mut D,
+    session: Option<&CompressionSession>,
+    emit: &mut dyn FnMut(MatchCandidate) -> Result<()>,
+) -> Result<u64>
+where
+    D: FnMut(&mut dyn DataSource, u64, u64) -> Result<[u8; 16]>,
+{
     let block_count = expected_block_count(spool.len, config.block_size)?;
     let mut source_ordinal = 0u64;
     let mut candidate_ordinal = 0u64;
@@ -134,36 +204,27 @@ where
         let block_end = block_start
             .checked_add(block_len)
             .ok_or_else(|| Error::invalid_match("CDC block end overflows"))?;
-        let boundaries = match method {
-            CdcMethod::M1 => m1_boundaries(
-                &mut source,
-                block_start,
-                block_end,
-                config
-                    .target_chunk
-                    .ok_or_else(|| Error::invalid_config("target chunk is required for m1"))?,
-                config.min_match,
-                &context.memory,
-            )?,
-            CdcMethod::M2 => m2_boundaries(
-                &mut source,
-                block_start,
-                block_end,
-                config
-                    .target_chunk
-                    .ok_or_else(|| Error::invalid_config("target chunk is required for m2"))?,
-                config.min_match,
-                &context.memory,
-            )?,
-        };
-        for &(chunk_start, chunk_end) in &boundaries {
+        let mut boundaries = BoundaryCursor::new(
+            method,
+            source,
+            block_start,
+            block_end,
+            config
+                .target_chunk
+                .ok_or_else(|| Error::invalid_config("target chunk is required for CDC"))?,
+            config.min_match,
+        )?;
+        while let Some((chunk_start, chunk_end)) = boundaries.next(source)? {
+            if let Some(session) = session {
+                session.check_cancelled()?;
+            }
             let chunk_len = chunk_end
                 .checked_sub(chunk_start)
                 .ok_or_else(|| Error::invalid_match("CDC chunk bounds are reversed"))?;
             if chunk_len == 0 {
                 return Err(Error::invalid_match("CDC emitted an empty chunk"));
             }
-            let digest = digest_fn(&mut source, chunk_start, chunk_len)?;
+            let digest = digest_fn(source, chunk_start, chunk_len)?;
             let key = cdc_key(chunk_len, &digest);
             index.for_each_candidate(
                 method.kind(),
@@ -171,10 +232,10 @@ where
                 chunk_start,
                 config.max_distance.unwrap_or(0),
                 &mut |entry| {
-                    if compare_contiguous(&mut source, entry.position, chunk_start, chunk_len)?
+                    if compare_contiguous(source, entry.position, chunk_start, chunk_len)?
                         && chunk_len >= config.min_match
                     {
-                        output.push(MatchCandidate {
+                        emit(MatchCandidate {
                             src: entry.position,
                             dst: chunk_start,
                             len: chunk_len,
@@ -200,7 +261,7 @@ where
             )?)?;
         }
     }
-    Ok(output)
+    Ok(candidate_ordinal)
 }
 
 fn cdc_key(length: u64, digest: &[u8; 16]) -> [u8; BLAKE3_KEY_LEN] {
@@ -210,7 +271,11 @@ fn cdc_key(length: u64, digest: &[u8; 16]) -> [u8; BLAKE3_KEY_LEN] {
     key
 }
 
-fn blake3_at(source: &mut dyn DataSource, position: u64, length: u64) -> Result<[u8; 16]> {
+pub(crate) fn blake3_at(
+    source: &mut dyn DataSource,
+    position: u64,
+    length: u64,
+) -> Result<[u8; 16]> {
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0u8; COMPARE_CHUNK];
     let mut offset = 0u64;
@@ -233,7 +298,7 @@ fn blake3_at(source: &mut dyn DataSource, position: u64, length: u64) -> Result<
 }
 
 fn compare_contiguous(
-    source: &mut impl DataSource,
+    source: &mut (impl DataSource + ?Sized),
     first: u64,
     second: u64,
     length: u64,
@@ -260,6 +325,192 @@ fn compare_contiguous(
             .ok_or_else(|| Error::invalid_match("CDC comparison offset overflows"))?;
     }
     Ok(true)
+}
+
+/// Stateful boundary generator.  It deliberately owns only the rolling
+/// window/predictor state and one pending residual range; a CDC block never
+/// becomes an allocation proportional to its number of chunks.
+struct BoundaryCursor {
+    state: BoundaryState,
+}
+
+enum BoundaryState {
+    M1 {
+        block_end: u64,
+        min_chunk: u64,
+        threshold: u64,
+        last_boundary: u64,
+        position: u64,
+        hash: u64,
+        outgoing_factor: u64,
+        finished: bool,
+        short: bool,
+    },
+    M2 {
+        block_end: u64,
+        min_chunk: u64,
+        threshold: u32,
+        last_boundary: u64,
+        position: u64,
+        predict: [u8; 256],
+        previous: u8,
+        hash: u32,
+        finished: bool,
+    },
+}
+
+impl BoundaryCursor {
+    fn new(
+        method: CdcMethod,
+        source: &mut dyn DataSource,
+        block_start: u64,
+        block_end: u64,
+        target_chunk: u64,
+        min_chunk: u64,
+    ) -> Result<Self> {
+        if target_chunk == 0 {
+            return Err(Error::invalid_config("target chunk must be positive"));
+        }
+        let state = match method {
+            CdcMethod::M1 => {
+                let short = block_end - block_start <= M1_SEED_SIZE;
+                let hash = if short {
+                    0
+                } else {
+                    let mut window = [0u8; M1_SEED_SIZE as usize];
+                    source.read_at(block_start, &mut window)?;
+                    polynomial_hash(&window)
+                };
+                BoundaryState::M1 {
+                    block_end,
+                    min_chunk,
+                    threshold: threshold_u64(target_chunk),
+                    last_boundary: block_start,
+                    position: if short {
+                        block_end
+                    } else {
+                        block_start
+                            .checked_add(M1_SEED_SIZE)
+                            .ok_or_else(|| Error::invalid_match("m1 scan position overflows"))?
+                    },
+                    hash,
+                    outgoing_factor: base_power(47),
+                    finished: false,
+                    short,
+                }
+            }
+            CdcMethod::M2 => BoundaryState::M2 {
+                block_end,
+                min_chunk,
+                threshold: threshold_u32(target_chunk),
+                last_boundary: block_start,
+                position: block_start,
+                predict: [0; 256],
+                previous: 0,
+                hash: 0,
+                finished: false,
+            },
+        };
+        Ok(Self { state })
+    }
+
+    fn next(&mut self, source: &mut dyn DataSource) -> Result<Option<(u64, u64)>> {
+        match &mut self.state {
+            BoundaryState::M1 {
+                block_end,
+                min_chunk,
+                threshold,
+                last_boundary,
+                position,
+                hash,
+                outgoing_factor,
+                finished,
+                short,
+            } => {
+                if *finished {
+                    return Ok(None);
+                }
+                if *short {
+                    *finished = true;
+                    return Ok(
+                        (*last_boundary < *block_end).then_some((*last_boundary, *block_end))
+                    );
+                }
+                while *position < *block_end {
+                    let mut byte = [0u8; 1];
+                    let old_position = position
+                        .checked_sub(M1_SEED_SIZE)
+                        .ok_or_else(|| Error::invalid_match("m1 outgoing position underflows"))?;
+                    source.read_at(old_position, &mut byte)?;
+                    let old = byte[0];
+                    source.read_at(*position, &mut byte)?;
+                    *hash = hash
+                        .wrapping_sub(u64::from(old).wrapping_mul(*outgoing_factor))
+                        .wrapping_mul(153_191)
+                        .wrapping_add(u64::from(byte[0]));
+                    let chunk_len = position
+                        .checked_sub(*last_boundary)
+                        .ok_or_else(|| Error::invalid_match("m1 chunk length underflows"))?;
+                    let at = *position;
+                    *position = position
+                        .checked_add(1)
+                        .ok_or_else(|| Error::invalid_match("m1 scan position overflows"))?;
+                    if *hash > *threshold && chunk_len >= *min_chunk {
+                        let result = (*last_boundary, at);
+                        *last_boundary = at;
+                        return Ok(Some(result));
+                    }
+                }
+                *finished = true;
+                Ok((*last_boundary < *block_end).then_some((*last_boundary, *block_end)))
+            }
+            BoundaryState::M2 {
+                block_end,
+                min_chunk,
+                threshold,
+                last_boundary,
+                position,
+                predict,
+                previous,
+                hash,
+                finished,
+            } => {
+                if *finished {
+                    return Ok(None);
+                }
+                while *position < *block_end {
+                    let mut byte = [0u8; 1];
+                    source.read_at(*position, &mut byte)?;
+                    let c = byte[0];
+                    let multiplier = if c != predict[*previous as usize] {
+                        271_828_182u32
+                    } else {
+                        314_159_265u32
+                    };
+                    *hash = hash.wrapping_add(u32::from(c) + 1).wrapping_mul(multiplier);
+                    predict[*previous as usize] = c;
+                    *previous = c;
+                    let at = *position;
+                    let chunk_len = at
+                        .checked_sub(*last_boundary)
+                        .ok_or_else(|| Error::invalid_match("m2 chunk length underflows"))?;
+                    *position = position
+                        .checked_add(1)
+                        .ok_or_else(|| Error::invalid_match("m2 scan position overflows"))?;
+                    if *hash > u32::from(*threshold) && chunk_len >= *min_chunk {
+                        let result = (*last_boundary, at);
+                        *last_boundary = at;
+                        *predict = [0; 256];
+                        *previous = 0;
+                        *hash = 0;
+                        return Ok(Some(result));
+                    }
+                }
+                *finished = true;
+                Ok((*last_boundary < *block_end).then_some((*last_boundary, *block_end)))
+            }
+        }
+    }
 }
 
 fn threshold_u64(target: u64) -> u64 {
@@ -427,6 +678,54 @@ mod tests {
     use std::io::Cursor;
 
     use crate::config::{CompressionConfig, ResourceConfig};
+
+    #[test]
+    fn streaming_boundary_cursor_matches_original_vector_at_all_block_edges() {
+        let resources = ResourceConfig::default();
+        let context = ResourceContext::with_resources(&resources).unwrap();
+        let mut state = 5u64;
+        let data = (0..2200)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (state >> 32) as u8
+            })
+            .collect::<Vec<_>>();
+        let spool = spool_input(data.as_slice(), &resources, &context).unwrap();
+        let mut source = SpoolDataSource::new(&spool).unwrap();
+        for method in [CdcMethod::M1, CdcMethod::M2] {
+            for (start, end) in [
+                (0, 0),
+                (0, 1),
+                (0, 47),
+                (0, 48),
+                (0, 49),
+                (0, 1024),
+                (1024, 2048),
+                (2048, 2200),
+            ] {
+                for (minimum, target) in [(2, 32), (32, 64), (64, 128)] {
+                    let expected = match method {
+                        CdcMethod::M1 => {
+                            m1_boundaries(&mut source, start, end, target, minimum, &context.memory)
+                        }
+                        CdcMethod::M2 => {
+                            m2_boundaries(&mut source, start, end, target, minimum, &context.memory)
+                        }
+                    }
+                    .unwrap();
+                    let mut cursor =
+                        BoundaryCursor::new(method, &mut source, start, end, target, minimum)
+                            .unwrap();
+                    let mut actual = Vec::new();
+                    while let Some(pair) = cursor.next(&mut source).unwrap() {
+                        actual.push(pair);
+                    }
+                    assert_eq!(actual, expected.as_slice());
+                    assert!(cursor.next(&mut source).unwrap().is_none());
+                }
+            }
+        }
+    }
 
     fn source(bytes: &[u8]) -> (InputSpool, ResourceContext) {
         let resources = ResourceConfig {
