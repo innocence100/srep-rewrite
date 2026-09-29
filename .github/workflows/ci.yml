@@ -19,6 +19,7 @@ jobs:
       - run: sh scripts/audit-lock-licenses.sh
       - run: sh scripts/test-license-audit.sh
       - run: python3 scripts/test-ci-yaml.py
+      - run: python3 scripts/test-native-release-workflow.py
       - run: python3 scripts/test-fidelity-evaluator.py
       - run: sh -n scripts/regenerate-legacy-fixtures.sh
       - run: python3 -m compileall -q scripts

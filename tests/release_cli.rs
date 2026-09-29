@@ -82,7 +82,7 @@ fn version_long_and_short_flags_match_cargo_pkg_version_without_io() {
         bodies.push(stdout);
     }
     assert_eq!(bodies[0], bodies[1]);
-    assert_eq!(env!("CARGO_PKG_VERSION"), "0.1.0");
+    assert_eq!(env!("CARGO_PKG_VERSION"), "0.1.1");
     fs::remove_dir_all(dir).unwrap();
 }
 

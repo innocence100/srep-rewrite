@@ -18,7 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "legacy"
 VALIDATOR = ROOT / "scripts" / "validate-legacy-fixtures.py"
-DECODER = ROOT / "target" / "debug" / "srep"
+TARGET = Path(os.environ.get("CARGO_TARGET_DIR") or ROOT / "target")
+DECODER = (TARGET if TARGET.is_absolute() else ROOT / TARGET) / "debug" / "srep"
 OLD = Path("/home/test/.opencode/archiving-tools/srep/bin/srep")
 TRUSTED_ROOT = Path("/tmp/opencode")
 OUTPUT_RE = re.compile(r"^srep-legacy-(generate|differential)\.[0-9a-f]{32}$")

@@ -34,16 +34,17 @@ Before submitting code changes, use the repository's applicable formatting,
 lint, test, documentation, and release-smoke checks. Native Windows and macOS
 compile, link, and test evidence must come from GitHub Actions on the relevant
 native runners. A Linux cross-compilation check is only a compile hint and is
-not Windows or macOS verification. The 0.1.0 binary package promise is Linux
-x86_64 glibc only. The preview binary is dynamically linked and observed GNU
-libc symbol versions up to GLIBC_2.30; do not invent a distro package name.
+not Windows or macOS verification. The 0.1.1 candidate targets Linux x86_64
+glibc, Windows x86_64 MSVC, and macOS ARM64. Measure runtime requirements on
+each actual package; the historical 0.1.0 GLIBC_2.30 observation does not prove
+the compatibility of a new build.
 
 For documentation-only changes, perform read-only checks that do not rebuild or
 rewrite shared artifacts. In particular, verify that examples use the current
 CLI names, that `CHANGELOG.md` keeps the current work under `Unreleased` until
 publication (historical notes must remain labeled as history, not as current
-0.1.0 claims), and that the 72-sample fidelity evidence is not claimed as a
-pre-publication result. The default-m3 Linux candidate round trip is recorded
+release claims), and that the incomplete 72-row fidelity comparison is not
+claimed as a pass or as fixed in 0.1.1. The historical 0.1.0 default-m3 round trip is recorded
 in the release notes as a correctness check; do not turn those raw timings
 into a performance claim.
 
@@ -63,14 +64,27 @@ CI, or generated artifacts for a docs-only release update.
 
 ## Release documentation
 
-The Linux artifact name, archive-root file list, and external `SHA256SUMS`
+The native artifact names, archive-root file list, and external `SHA256SUMS`
 verification command are part of the release interface. The package root must
 contain `srep`, `LICENSE`, `THIRD_PARTY.md`, `THIRD_PARTY.audit`, `README.md`,
-`CHANGELOG.md`, and `NOTICES`; dependency notices are collected by the release
+`CHANGELOG.md`, `NOTICES`, `BUILD-PROVENANCE.json`, and `PLATFORM-README.md`
+(Windows uses `srep.exe`); dependency notices are collected by the release
 integration owner. The SPDX map in `THIRD_PARTY.audit` is an attribution
 checklist, not a certification that every legal requirement is satisfied.
-Windows and macOS may remain optional validation evidence, but must not be
-described as published binaries without an actual artifact.
+For 0.1.1, all six native jobs (three OSes × stable/MSRV) and three extracted
+package smoke tests are required. They validate release-profile tests without
+changing timing assertions. The separate `ci.yml` debug-profile checks remain
+unchanged; a failure there must be reported, not relabeled as a release-profile
+pass. No platform is described as published without an actual artifact.
+
+Push builds use the workflow commit (`github.sha`) for both source and tooling.
+Manual dispatch requires an explicit source ref, full expected source SHA, and
+version; tooling still comes from the workflow commit. Use
+`scripts/package-release.py --build` for the portable release contract, not the
+historical Linux-only shell packager. The Python packager requires clean source
+and tooling checkouts and rejects unvalidated Cargo configuration. Never use
+test-only license skips for distributable packages. Source review precedes the
+CI push; independent publication review follows actual artifact/runtime checks.
 
 When reporting a bug, include the version, platform/architecture, complete
 options, and a safe reproducer. Remove credentials and confidential input

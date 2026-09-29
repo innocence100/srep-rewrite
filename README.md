@@ -1,7 +1,7 @@
 # SREP-NG
 
 SREP-NG is a clean-room Rust implementation of the SuperREP preprocessor. In
-software release **0.1.0**, the current archive format is **SREP-NG v3
+software release **0.1.1**, the current archive format is **SREP-NG v3
 (NGv3)**. NGv3 is the format written by this project and the format read by
 default.
 
@@ -28,49 +28,65 @@ The current normative wire specification is [`docs/FORMAT-V3.md`](docs/FORMAT-V3
 they are not current NGv2 contracts. The frozen design remains relevant only
 where NGv3 explicitly inherits matching and resource semantics.
 
-## Install the Linux release artifact
+## Install a 0.1.1 native release artifact
 
-The 0.1.0 binary package promised by this release is Linux x86_64 with the
-glibc target `x86_64-unknown-linux-gnu`:
+Version 0.1.1 is a maintenance candidate. Publication requires independent
+review and fresh native GitHub Actions evidence for Linux x86_64, Windows
+x86_64 MSVC, and macOS ARM64. Expected package names are below; their presence
+here does not mean they have been published. Exact target, source, compiler,
+hash, and runtime details come
+from each package's `BUILD-PROVENANCE.json` and `NOTICES`.
 
 ```text
-srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
+srep-v0.1.1-x86_64-pc-windows-msvc.zip
+srep-v0.1.1-aarch64-apple-darwin.tar.gz
 ```
 
-The archive has one directory whose name is the archive basename without
-`.tar.gz`. That directory contains:
+Each archive has one directory named after its basename without `.tar.gz` or
+`.zip` and contains the
+binary, release documents, `NOTICES`, `BUILD-PROVENANCE.json`, and
+`PLATFORM-README.md`. `SHA256SUMS` is beside the archive.
 
 ```text
-srep
+srep (srep.exe on Windows)
 LICENSE
-THIRD_PARTY.md
-THIRD_PARTY.audit
 README.md
 CHANGELOG.md
+THIRD_PARTY.md
+THIRD_PARTY.audit
 NOTICES
+BUILD-PROVENANCE.json
+PLATFORM-README.md
 ```
 
 `SHA256SUMS` is distributed beside the tarball, not inside it. Verify the
 download before unpacking or running it:
 
 ```sh
-sha256sum -c SHA256SUMS
-tar -xzf srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-cd srep-v0.1.0-x86_64-unknown-linux-gnu
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
+cd srep-v0.1.1-x86_64-unknown-linux-gnu
 ./srep --version
 ./srep --help
 ```
 
-The Linux x86_64 package is dynamically linked (`libc.so.6`,
-`ld-linux-x86-64.so.2`, `libpthread.so.0`, `libgcc_s.so.1`, `libdl.so.2`).
-`readelf` on the 0.1.0 preview binary observed GNU libc symbol versions up to
-**GLIBC_2.30**. That is a runtime symbol-version bound, not a distro package
-name. Exact binary and tarball checksums are in the adjacent `SHA256SUMS` and
-in the package `NOTICES` file; they are not duplicated here. Only the Linux
-x86_64 package is promised. Windows and macOS source validation has previously
-passed in native CI at historical commit `8dca8bed`, but no Windows or macOS
-0.1.0 binary package is promised by these notes. This preview is not a GitHub
-Release until the integrator publishes it.
+Windows PowerShell: run `Get-FileHash .\srep-v0.1.1-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
+and compare with the matching `SHA256SUMS` entry before using `Expand-Archive`.
+In the extracted directory run `.\srep.exe --version` and `.\srep.exe --help`.
+This is an x86_64 MSVC package, not an ARM64 or MinGW package.
+
+On Apple Silicon macOS, run `shasum -a 256 srep-v0.1.1-aarch64-apple-darwin.tar.gz`
+and compare with the matching entry before unpacking with `tar -xzf`.
+In the extracted directory run `./srep --version` and `./srep --help`.
+The macOS package is ARM64, not Intel/universal. Packages are not publisher
+code-signed or notarized. macOS may require explicit approval in Privacy &
+Security after verification; do not disable Gatekeeper globally.
+
+New 0.1.1 runtime compatibility is unknown
+until the native build completes. The published 0.1.0 tarball remains
+unchanged; its SHA-256 is
+`039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401`.
 
 ## Build from source
 
@@ -144,9 +160,14 @@ does not require a sidecar index. `info` reports the archive's format,
 method, layout, checksum, and size/match metadata.
 
 This describes implemented interfaces, not a claim that NGv3 matches the
-historical compressor's byte output, ratio, or runtime. The 72-sample fidelity
-comparison is intentionally deferred until after publication and is tracked as
-a separate acceptance gate.
+historical compressor's byte output, ratio, or runtime. The prior integration
+handoff reports 12 completed rows of a 72-row comparison (12 samples times six
+methods), not a
+full-quality PASS. Sample 03 / m0 is incomplete because the default 256 MiB
+memory budget reached an out-of-memory condition. The planned 0.2 bounded-memory
+fix is not included here; no uniform skip or algorithm, ratio, or fidelity
+claim follows. Those historical raw fidelity logs are no longer present in the
+recreated workspace; this is a disclosed known limitation, not fresh evidence.
 
 ## Evidence and release status
 
@@ -162,7 +183,7 @@ block whose match-distance witness was greater than 256 MiB; it completed in
 17.57 seconds. It is not full round-trip evidence and is not default-m3
 performance evidence.
 
-The default-m3 Linux release-binary comparison **passed**. Recipe
+The historical **0.1.0** default-m3 Linux release-binary comparison **passed**. Recipe
 `repeat-1mib-separated-256mib-unique-v1`, 270532608 bytes, input SHA-256
 `c6c2c4a0735a006faf10ffec7dce05ecd23366a5da071f5d5dfdb3b0eb38f0a8`. Commands
 used the binary defaults (no `-m` / `--method` / `--layout` / `--checksum`);
@@ -170,7 +191,8 @@ only `--temp-dir` was added. `info` reported `SREP-NG v3` / `m3` / `index` /
 `xxh3`. `test`, decompress, SHA-256, and `cmp` matched. This is a correctness
 round trip, not a ratio or performance claim. Artifact identity (source SHA,
 compiler, binary SHA-256) is recorded in package `NOTICES` and `SHA256SUMS`,
-not in this file. See [`docs/releases/v0.1.0.md`](docs/releases/v0.1.0.md) and
+not in this file. See [`docs/releases/v0.1.1.md`](docs/releases/v0.1.1.md),
+[`docs/releases/v0.1.0.md`](docs/releases/v0.1.0.md), and
 [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md).
 
 ## Reporting a bug

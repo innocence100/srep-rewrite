@@ -61,7 +61,7 @@ They do not compare current NGv3 bytes or sizes to retired NGv2 pins. Retained
 historical NGv2 bytes are checked offline for their frozen hashes, headers, and
 provenance only. No NGv2 compatibility claim is made.
 
-The 0.1.0 package contract is limited to the Linux x86_64 glibc artifact
+The historical 0.1.0 package contract was limited to the Linux x86_64 glibc artifact
 `srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`. Its package root must contain
 `srep`, `LICENSE`, `THIRD_PARTY.md`, `THIRD_PARTY.audit`, `README.md`,
 `CHANGELOG.md`, and `NOTICES`; `SHA256SUMS` is external to the tarball. The
@@ -90,9 +90,21 @@ Recorded facts:
 - CLI: `srep compress --temp-dir … INPUT ARCHIVE` (no method/layout/checksum override), then `info`, `test`, `decompress --temp-dir …`, `cmp`
 - `info`: format `SREP-NG v3`, method `m3`, layout `index`, checksum `xxh3`, block size 8388608, min-match 512, 33 blocks, 1 semantic match covering 1048576 bytes
 - step exit codes all 0; compress 9286.37 s, info 8.33 s, test 8.40 s, decompress 9.65 s, cmp 0.18 s (raw timings, not a performance claim)
-- step record retained in the integration evidence workspace
+- step record was retained in the former integration workspace; those local raw
+  logs are no longer present in the recreated maintenance workspace
 
-The 72-sample fidelity run is intentionally deferred until **after
-publication**; no ratio or performance parity claim is authorized. Native
-Windows/macOS packages remain omitted. GitHub tag/Release upload remains an
-external handoff.
+At 0.1.0 publication the 72-row fidelity comparison was deferred. The later
+integration handoff reports only 12 completed rows before sample 03 / m0 hit
+the default 256 MiB memory budget. Historical raw fidelity logs are not present
+in the recreated workspace, and no complete fidelity/ratio/performance pass is
+claimed. 0.1.1 is maintenance only and does **not** fix that failure.
+
+The 0.1.1 candidate requires fresh Linux x86_64, Windows MSVC x86_64, and macOS
+ARM64 native checks and release-profile tests at stable and Rust 1.88.0, plus
+three MSRV-built extracted-package smoke tests. Its package contract adds
+`BUILD-PROVENANCE.json` and `PLATFORM-README.md` and uses `srep.exe` on Windows.
+Historical run [36289549578](https://github.com/innocence100/srep-rewrite/actions/runs/36289549578)
+passed all six jobs using source `2980d782` and tooling `cda95bd`; it is not
+0.1.1 validation. Runtime requirements and hashes must be measured on each new
+artifact. See [the 0.1.1 candidate notes](releases/v0.1.1.md). Publication remains
+gated on independent review and the actual new native evidence.

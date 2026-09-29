@@ -1,5 +1,5 @@
 #!/bin/sh
-# Reproducible Linux release packager for SREP-NG 0.1.0.
+# Reproducible Linux release packager for SREP-NG 0.1.1.
 # Stages the contracted tarball layout and honest NOTICES. Does not publish.
 #
 # Provenance rules (F1):
@@ -38,10 +38,10 @@ Environment (typically from interface/env.sh):
   SREP_RUSTC_SYSROOT              override rustc --print sysroot (tests)
 
 Unpack smoke (after a real tarball exists; uses extracted binary, not target/):
-  tar -tzf "$OUT/srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
+  tar -tzf "$OUT/srep-v<VERSION>-x86_64-unknown-linux-gnu.tar.gz"
   smoke=$(mktemp -d "${TMPDIR:-/tmp}/srep-unpack.XXXXXX")
-  tar -C "$smoke" -xzf "$OUT/srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
-  inner="$smoke/srep-v0.1.0-x86_64-unknown-linux-gnu/srep"
+  tar -C "$smoke" -xzf "$OUT/srep-v<VERSION>-x86_64-unknown-linux-gnu.tar.gz"
+  inner="$smoke/srep-v<VERSION>-x86_64-unknown-linux-gnu/srep"
   sha256sum "$inner"
   SREP_RELEASE_BIN="$inner" sh "$REPO/scripts/release-smoke.sh"
   sha256sum -c "$OUT/SHA256SUMS"
@@ -86,7 +86,18 @@ if [ -z "$repo" ]; then
 fi
 repo=$(CDPATH= cd -- "$repo" && pwd)
 
-version=${SREP_VERSION:-0.1.0}
+manifest_version=$(python3 - "$repo/Cargo.toml" <<'PY'
+import sys
+import tomllib
+with open(sys.argv[1], "rb") as handle:
+    print(tomllib.load(handle)["package"]["version"])
+PY
+)
+version=${SREP_VERSION:-$manifest_version}
+if [ "$version" != "$manifest_version" ]; then
+    printf '%s\n' "SREP_VERSION $version does not match Cargo.toml package version $manifest_version" >&2
+    exit 2
+fi
 triple=${SREP_TARGET_TRIPLE:-x86_64-unknown-linux-gnu}
 base="srep-v${version}-${triple}"
 artifact_name="${base}.tar.gz"
@@ -462,7 +473,7 @@ notices="$payload/NOTICES"
     printf '%s\n' "SOURCE_DATE_EPOCH used for archive mtime: ${source_date}"
     printf '%s\n' ""
     printf '%s\n' "License: MIT (see LICENSE); third-party SPDX map: THIRD_PARTY.md / THIRD_PARTY.audit"
-    printf '%s\n' "Preview caveat: v0.1 preview. 72-case fidelity vs historical C srep is deferred until after publication (possible 0.1.1 patch)."
+    printf '%s\n' "Preview caveat: fidelity vs historical C srep remains incomplete; 0.1.1 does not fix the known memory-budget failure or claim ratio/runtime parity. See README.md."
     printf '%s\n' "This NOTICES file does not contain its own SHA-256 or the tarball SHA-256 (those would be self-referential)."
     printf '%s\n' ""
 } > "$notices"

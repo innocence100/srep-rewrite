@@ -1,10 +1,36 @@
 # Changelog
 
-All notable changes to this project are documented here. The 0.1.0 preview is
-still unreleased: a published version heading will be added only when the
-release integrator has confirmed the artifact and its required evidence.
+All notable changes to this project are documented here. Current maintenance
+work remains unreleased until independent review and native artifact validation.
 
-## Unreleased
+## Unreleased — 0.1.1 maintenance
+
+- Continued maintenance toward 0.1.1 without changing the NGv3 algorithm or
+  claiming historical-compressor parity. Native Linux, Windows MSVC, and macOS
+  ARM64 packages are built only by the six-job native GitHub Actions workflow;
+  source and tooling commits are recorded from `github.sha` and in provenance.
+- Preserved NGv3 read/write, historical SuperREP v1–v4 read-only compatibility,
+  NGv1/NGv2 rejection, split-index rejection, default m3, MSRV 1.88, and the
+  original-preservation warning. The 0.1.0 Linux artifact and tag/assets are
+  historical and are not replaced.
+- The prior integration handoff reports 12 of 72 fidelity rows, not a
+  full-quality pass; its raw logs are no longer available locally. Sample 03 / m0
+  remains incomplete after the default 256 MiB memory budget reached an
+  out-of-memory condition. The bounded-memory fix belongs to 0.2 and is not
+  included here; no rows are uniformly skipped to hide the gap.
+
+- Version and release packaging metadata are aligned at 0.1.1. Portable
+  packaging records actual compiler, registry notices, Rust copyright notices,
+  source/tooling hashes, binary/archive hashes, extracted version/help, and
+  multi-block compress/info/test/decompress/hash smoke evidence.
+- Runtime compatibility for a newly built 0.1.1 binary is intentionally
+  unknown until its native build completes. The observed GLIBC_2.30 bound and
+  SHA-256 values below belong only to the already-published 0.1.0 Linux asset.
+
+## 0.1.0 — 2026-09-23 (published limited Linux preview)
+
+The following are historical release notes. Fidelity was deferred at publication;
+the subsequent incomplete comparison is disclosed above, not claimed as a pass.
 
 - Prepared the limited SREP-NG software 0.1.0 preview around the current
   **NGv3** archive format. NGv3 is the read/write format; historical

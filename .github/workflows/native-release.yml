@@ -3,23 +3,21 @@ name: Native release artifacts
 on:
   push:
     branches:
-      - 'ci/native-release/**'
+      - 'ci/native-release/v0.1.1'
   workflow_dispatch:
     inputs:
       ref:
-        description: Clean source ref or commit to build and package
+        description: Clean source ref or commit (must resolve to source_sha)
         required: true
-        default: 2980d782e647286d996fb5e8230e72b8e16c7a05
         type: string
       source_sha:
         description: Expected full source commit SHA
         required: true
-        default: 2980d782e647286d996fb5e8230e72b8e16c7a05
         type: string
       version:
         description: Expected Cargo package version
         required: true
-        default: 0.1.0
+        default: 0.1.1
         type: string
 
 permissions:
@@ -59,7 +57,7 @@ jobs:
       - name: Check out immutable production source revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || '2980d782e647286d996fb5e8230e72b8e16c7a05' }}
+          ref: ${{ inputs.ref || github.sha }}
           path: source
           fetch-depth: 0
           persist-credentials: false
@@ -87,9 +85,10 @@ jobs:
       - name: Verify clean source identity and native host
         shell: bash
         env:
-          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || '2980d782e647286d996fb5e8230e72b8e16c7a05' }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
         run: |
           set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git -C source rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
           test -z "$(git -C source status --porcelain --untracked-files=all)"
           test -z "$(git -C tools status --porcelain --untracked-files=all)"
@@ -97,7 +96,7 @@ jobs:
       - name: Verify manifest version
         shell: bash
         env:
-          EXPECTED_VERSION: ${{ inputs.version || '0.1.0' }}
+          EXPECTED_VERSION: ${{ inputs.version || '0.1.1' }}
         run: |
           python -c 'import pathlib,tomllib,os; actual=tomllib.loads(pathlib.Path("source/Cargo.toml").read_text())["package"]["version"]; expected=os.environ["EXPECTED_VERSION"]; assert actual == expected, (actual, expected)'
       - name: Check native source
@@ -113,7 +112,7 @@ jobs:
         if: matrix.rust == '1.88.0'
         shell: bash
         env:
-          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || '2980d782e647286d996fb5e8230e72b8e16c7a05' }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/native-dist"
@@ -127,7 +126,7 @@ jobs:
         if: matrix.rust == '1.88.0'
         uses: actions/upload-artifact@v4
         with:
-          name: srep-v${{ inputs.version || '0.1.0' }}-${{ matrix.target }}
+          name: srep-v${{ inputs.version || '0.1.1' }}-${{ matrix.target }}
           path: ${{ runner.temp }}/native-dist/*
           if-no-files-found: error
           retention-days: 14

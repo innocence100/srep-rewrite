@@ -26,7 +26,7 @@ def run(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
     )
 
 
-def write_exec(path: Path, body: bytes = b"#!/bin/sh\necho srep 0.1.0\n") -> Path:
+def write_exec(path: Path, body: bytes = b"#!/bin/sh\necho srep 0.1.1\n") -> Path:
     path.write_bytes(body)
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
     return path
@@ -64,6 +64,10 @@ def provenance_for(binary: Path, **extra: object) -> dict[str, object]:
 def make_mini_repo(tmp: Path, *, git: bool = False) -> Path:
     repo = tmp / "repo"
     repo.mkdir()
+    (repo / "Cargo.toml").write_text(
+        '[package]\nname = "srep"\nversion = "0.1.1"\nedition = "2021"\n',
+        encoding="utf-8",
+    )
     for name in ("LICENSE", "README.md", "CHANGELOG.md", "THIRD_PARTY.md", "THIRD_PARTY.audit"):
         (repo / name).write_text(f"{name} test\n", encoding="utf-8")
     (repo / "scripts").mkdir()
@@ -87,10 +91,23 @@ def test_help_and_syntax() -> None:
     help_out = run(["sh", str(SCRIPT), "--help"])
     assert help_out.returncode == 0, help_out.stderr
     assert "Unpack smoke" in help_out.stdout
-    assert "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz" in help_out.stdout
+    assert "srep-v<VERSION>-x86_64-unknown-linux-gnu.tar.gz" in help_out.stdout
     assert "--stage-only" in help_out.stdout
     assert "release-smoke.sh" in help_out.stdout
     assert "SREP_RELEASE_BIN" in help_out.stdout
+
+
+def test_manifest_version_and_override_mismatch() -> None:
+    with tempfile.TemporaryDirectory(prefix="srep-pkg-version-") as raw:
+        root = Path(raw)
+        repo = make_mini_repo(root)
+        binary = write_exec(root / "srep")
+        env = {**os.environ, "SREP_VERSION": "0.1.0"}
+        result = run(["sh", str(SCRIPT), "--repo", str(repo), "--bin", str(binary),
+                      "--out-dir", str(root / "out"), "--stage-only", "--skip-licenses"], env=env)
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert "does not match Cargo.toml package version 0.1.1" in result.stderr
+        assert not (root / "out").exists()
 
 
 def test_bin_without_provenance_is_rejected() -> None:
@@ -176,13 +193,13 @@ def test_matching_sidecar_records_build_not_packaging_compiler() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.0-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Provenance kind: sidecar" in notices
         assert "Build compiler: rustc 1.96.0 (test sidecar)" in notices
         assert "Packaging-time metadata (not a substitute for build provenance)" in notices
         assert "UNPROVENANCED" not in notices
-        tarball = tmp / "out" / "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
+        tarball = tmp / "out" / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz"
         assert not tarball.exists()
         assert "SREP_RELEASE_BIN=" in result.stdout
         assert "release-smoke.sh" in result.stdout
@@ -265,7 +282,7 @@ def test_clean_tree_is_not_labeled_dirty() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.0-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Packaging worktree: clean" in notices
         assert "This packaging tree is dirty" not in notices
@@ -306,7 +323,7 @@ def test_dirty_tree_is_labeled_dirty() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.0-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Packaging worktree: dirty" in notices
         assert "This packaging tree is dirty" in notices
@@ -347,7 +364,7 @@ def test_tar_failure_leaves_no_publishable_artifact() -> None:
         )
         assert result.returncode != 0, result.stdout + result.stderr
         assert "tar failed" in result.stderr
-        assert not (out_dir / "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz").exists()
+        assert not (out_dir / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz").exists()
         assert not (out_dir / "SHA256SUMS").exists()
         leftovers = list(out_dir.glob("*.tar.gz")) + list(out_dir.glob("SHA256SUMS*"))
         assert leftovers == []
@@ -388,7 +405,7 @@ def test_gzip_failure_leaves_no_publishable_artifact() -> None:
         )
         assert result.returncode != 0, result.stdout + result.stderr
         assert "gzip failed" in result.stderr
-        assert not (out_dir / "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz").exists()
+        assert not (out_dir / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz").exists()
         assert not (out_dir / "SHA256SUMS").exists()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -422,7 +439,7 @@ def test_successful_tar_layout_and_checksum() -> None:
             env=env,
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        tarball = out_dir / "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
+        tarball = out_dir / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz"
         sums = out_dir / "SHA256SUMS"
         assert tarball.is_file()
         assert sums.is_file()
@@ -430,9 +447,9 @@ def test_successful_tar_layout_and_checksum() -> None:
         assert check.returncode == 0, check.stdout + check.stderr
         with tarfile.open(tarball, "r:gz") as archive:
             names = archive.getnames()
-        assert "srep-v0.1.0-x86_64-unknown-linux-gnu/srep" in names
-        assert "srep-v0.1.0-x86_64-unknown-linux-gnu/NOTICES" in names
-        assert "srep-v0.1.0-x86_64-unknown-linux-gnu/README.md" in names
+        assert "srep-v0.1.1-x86_64-unknown-linux-gnu/srep" in names
+        assert "srep-v0.1.1-x86_64-unknown-linux-gnu/NOTICES" in names
+        assert "srep-v0.1.1-x86_64-unknown-linux-gnu/README.md" in names
         assert "SREP_RELEASE_BIN=" in result.stdout
         assert "scripts/release-smoke.sh" in result.stdout
     finally:
@@ -482,7 +499,7 @@ def test_rust_std_copyright_is_copied_and_bound() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.0-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Copyright notices for The Rust Standard Library" in notices
         assert "gimli" in notices
@@ -695,7 +712,7 @@ def test_predictable_provenance_env_symlink_is_not_clobbered_or_sourced() -> Non
             assert path.is_symlink(), path
             assert path.resolve() == victim.resolve()
         notices = (
-            tmp / "stage" / "srep-v0.1.0-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Provenance kind: sidecar" in notices
         assert "PWNED" not in notices
@@ -929,6 +946,7 @@ def test_authors_file_is_treated_as_copyright_source() -> None:
 def main() -> int:
     tests = [
         test_help_and_syntax,
+        test_manifest_version_and_override_mismatch,
         test_bin_without_provenance_is_rejected,
         test_wrong_sidecar_sha_is_rejected,
         test_matching_sidecar_records_build_not_packaging_compiler,

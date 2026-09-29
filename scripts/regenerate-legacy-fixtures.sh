@@ -3,7 +3,9 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 generator=$root/scripts/generate-legacy-fixtures.py
-decoder=$root/target/debug/srep
+target=${CARGO_TARGET_DIR:-$root/target}
+case "$target" in /*) ;; *) target=$root/$target ;; esac
+decoder=$target/debug/srep
 
 usage() {
     printf '%s\n' \
