@@ -589,9 +589,10 @@ fn write_archive<R: Read>(
 ) -> Result<()> {
     let context = ResourceContext::with_resources(&config.resources)?;
     let (temp, writer) = temporary_output(path)?;
-    let mut writer = srep::resource::BudgetedWriter::new(writer, &context.temp)?;
-    let result = compress_with_context(input, &mut writer, config, &context);
-    finish_temporary(path, temp, writer, result.map(|_| ()), force)
+    let writer = srep::resource::BudgetedWriter::new(writer, &context.temp)?;
+    finish_temporary_transaction(path, temp, writer, force, |writer| {
+        compress_with_context(input, writer, config, &context).map(|_| ())
+    })
 }
 
 fn decompress_stream<R: Read, W: Write>(
@@ -610,9 +611,10 @@ fn decompress_to_path<R: Read>(
 ) -> Result<()> {
     let context = ResourceContext::with_resources(resources)?;
     let (temp, writer) = temporary_output(path)?;
-    let mut writer = srep::resource::BudgetedWriter::new(writer, &context.temp)?;
-    let result = decompress_with_context(input, &mut writer, resources, &context);
-    finish_temporary(path, temp, writer, result.map(|_| ()), force)
+    let writer = srep::resource::BudgetedWriter::new(writer, &context.temp)?;
+    finish_temporary_transaction(path, temp, writer, force, |writer| {
+        decompress_with_context(input, writer, resources, &context).map(|_| ())
+    })
 }
 
 fn temporary_output(path: &Path) -> Result<(PathBuf, tempfile::NamedTempFile)> {
@@ -696,6 +698,25 @@ fn finish_temporary(
             }
         })
     }
+}
+
+/// Keep the CLI transaction boundary testable without exposing a production
+/// fault hook.  The operation writes only to the sibling temporary file; the
+/// destination is persisted by `finish_temporary` after the operation, flush,
+/// and sync all succeed.
+fn finish_temporary_transaction<F>(
+    path: &Path,
+    temp: PathBuf,
+    writer: srep::resource::BudgetedWriter<tempfile::NamedTempFile>,
+    force: bool,
+    operation: F,
+) -> Result<()>
+where
+    F: FnOnce(&mut srep::resource::BudgetedWriter<tempfile::NamedTempFile>) -> Result<()>,
+{
+    let mut writer = writer;
+    let result = operation(&mut writer);
+    finish_temporary(path, temp, writer, result, force)
 }
 
 fn normalized_parent(path: &Path) -> &Path {
@@ -785,6 +806,9 @@ default output suffix is .srep"
 #[cfg(test)]
 mod tests {
     use super::existing_regular_entries_are_same;
+    use super::finish_temporary_transaction;
+    use srep::Error;
+    use srep::ResourceConfig;
     use std::fs;
     use std::path::PathBuf;
 
@@ -821,5 +845,56 @@ mod tests {
         assert!(!existing_regular_entries_are_same(&input, &dir.join("missing")).unwrap());
 
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn failed_transaction_does_not_replace_existing_destination() {
+        let dir = temp_dir();
+        let destination = dir.join("archive.srep");
+        fs::write(&destination, b"old archive").unwrap();
+        let (temp_path, temp) = super::temporary_output(&destination).unwrap();
+        let context = srep::ResourceContext::with_resources(&ResourceConfig::default()).unwrap();
+        let writer = srep::resource::BudgetedWriter::new(temp, &context.temp).unwrap();
+        let result =
+            finish_temporary_transaction(&destination, temp_path.clone(), writer, true, |writer| {
+                use std::io::Write;
+                writer
+                    .write_all(b"partial archive")
+                    .map_err(Error::output_io)?;
+                Err(Error::input_io(std::io::Error::other(
+                    "injected transaction failure",
+                )))
+            });
+        assert_eq!(result.unwrap_err().kind(), srep::ErrorKind::InputIo);
+        assert_eq!(fs::read(&destination).unwrap(), b"old archive");
+        assert!(!temp_path.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cancelled_or_corrupt_transaction_does_not_publish_prefix() {
+        for kind in [
+            srep::ErrorKind::TemporaryStorageFailure,
+            srep::ErrorKind::CorruptRecord,
+        ] {
+            let dir = temp_dir();
+            let destination = dir.join("archive.srep");
+            fs::write(&destination, b"original").unwrap();
+            let (path, temp) = super::temporary_output(&destination).unwrap();
+            let context =
+                srep::ResourceContext::with_resources(&ResourceConfig::default()).unwrap();
+            let writer = srep::resource::BudgetedWriter::new(temp, &context.temp).unwrap();
+            let result =
+                finish_temporary_transaction(&destination, path.clone(), writer, true, |w| {
+                    use std::io::Write;
+                    w.write_all(&[1; 65536]).map_err(Error::output_io)?;
+                    Err(Error::new(kind, "cancelled or corrupt after prefix"))
+                });
+            assert_eq!(result.unwrap_err().kind(), kind);
+            assert_eq!(fs::read(&destination).unwrap(), b"original");
+            assert!(!path.exists());
+            assert_eq!(context.temp.current(), 0);
+            fs::remove_dir_all(dir).unwrap();
+        }
     }
 }

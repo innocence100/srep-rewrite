@@ -22,6 +22,7 @@ pub mod format_v3;
 pub mod legacy;
 pub mod match_finder;
 pub mod match_ir;
+pub(crate) mod offload;
 pub mod path;
 mod polynomial;
 pub mod requirement;

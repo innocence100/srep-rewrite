@@ -316,6 +316,21 @@ impl<T> BudgetedVec<T> {
         self.data.is_empty()
     }
 
+    /// Remove all logical elements without giving back the allocation.
+    ///
+    /// Offload stages reuse fixed-capacity working sets between runs.  A plain
+    /// `clear` would be easy to add here, but this deliberately named helper
+    /// documents the ownership contract: the capacity and its reservation stay
+    /// live, so the next append cannot grow an unbudgeted `Vec`.
+    pub(crate) fn clear_with_capacity(&mut self) {
+        self.data.clear();
+        debug_assert_eq!(
+            self.reserved_bytes(),
+            self.reservation.amount,
+            "BudgetedVec reservation must cover retained capacity"
+        );
+    }
+
     pub(crate) fn budget(&self) -> &MemoryBudget {
         &self.budget
     }

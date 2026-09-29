@@ -210,6 +210,10 @@ impl Error {
         }
     }
 
+    pub(crate) fn input_io_with_context(source: io::Error, context: impl Into<String>) -> Self {
+        Self::with_source(ErrorKind::InputIo, context, source)
+    }
+
     pub fn output_io(source: io::Error) -> Self {
         let context = source.to_string();
         Self {
