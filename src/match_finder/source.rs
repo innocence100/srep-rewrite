@@ -20,9 +20,11 @@ pub struct SpoolDataSource<'a> {
     file: File,
     _handle: Option<ResourceLease>,
     io: Option<SessionIo>,
+    // Keep the two 64 KiB cache payloads off the call stack.  The session
+    // constructor charges the same 128 KiB through `_cache_reservation`.
+    caches: [Box<[u8]>; 2],
     _cache_reservation: Option<Reservation>,
     length: u64,
-    caches: [[u8; 64 * 1024]; 2],
     cache_start: [u64; 2],
     cache_len: [usize; 2],
     next_cache: usize,
@@ -37,7 +39,7 @@ impl<'a> SpoolDataSource<'a> {
             io: None,
             _cache_reservation: None,
             length: spool.len,
-            caches: [[0; 64 * 1024]; 2],
+            caches: std::array::from_fn(|_| vec![0; 64 * 1024].into_boxed_slice()),
             cache_start: [0; 2],
             cache_len: [0; 2],
             next_cache: 0,
@@ -48,7 +50,8 @@ impl<'a> SpoolDataSource<'a> {
     /// Session-owned source reader for the bounded codec path.  The cache and
     /// cloned descriptor are admitted before the file is cloned, and physical
     /// reads consume the shared session I/O ledger.  Public raw finders retain
-    /// `new` and its unchanged API/resource behavior.
+    /// `new` and its unchanged API/resource behavior; because that API has no
+    /// `ResourceContext`, its heap cache is outside the `--memory` contract.
     pub(crate) fn new_in_session(
         spool: &'a InputSpool,
         session: &CompressionSession,
@@ -66,7 +69,7 @@ impl<'a> SpoolDataSource<'a> {
             io: Some(session.io_access()),
             _cache_reservation: Some(cache_reservation),
             length: spool.len,
-            caches: [[0; 64 * 1024]; 2],
+            caches: std::array::from_fn(|_| vec![0; 64 * 1024].into_boxed_slice()),
             cache_start: [0; 2],
             cache_len: [0; 2],
             next_cache: 0,
@@ -242,13 +245,16 @@ mod tests {
         let session =
             CompressionSession::new(&context, &resources, OffloadPolicy::default()).unwrap();
         let handles_before = session.handle_usage().current;
+        let memory_before = context.memory.current();
         let mut source = SpoolDataSource::new_in_session(&spool, &session).unwrap();
+        assert_eq!(context.memory.current(), memory_before + 2 * 64 * 1024);
         let mut bytes = [0; 64];
         source.read_at(0, &mut bytes).unwrap();
         assert!(session.io_used() >= bytes.len() as u128);
         assert_eq!(session.handle_usage().current, handles_before + 1);
         drop(source);
         assert_eq!(session.handle_usage().current, handles_before);
+        assert_eq!(context.memory.current(), memory_before);
         drop(session);
         drop(spool);
         assert_eq!(context.memory.current(), 0);

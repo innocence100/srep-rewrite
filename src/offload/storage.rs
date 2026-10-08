@@ -1442,7 +1442,15 @@ mod tests {
             let mut b = CandidateTableBuilder::new(&s, 123).unwrap();
             b.append(row(0)).unwrap();
             let t = b.finish().unwrap();
-            raw_mutate(&t.file, offset, &[255]);
+            let mut old = [0];
+            {
+                let mut file = t.file.borrow_mut();
+                file.raw().seek(SeekFrom::Start(offset)).unwrap();
+                file.raw().read_exact(&mut old).unwrap();
+            }
+            let changed = old[0] ^ 1;
+            assert_ne!(old[0], changed);
+            raw_mutate(&t.file, offset, &[changed]);
             assert!(t.read_at(0).is_err());
         }
         for len in [127, 191, 193] {

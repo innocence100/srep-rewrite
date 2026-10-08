@@ -75,9 +75,18 @@ impl SessionId {
     }
 }
 fn next_checked(counter: &AtomicU64) -> Result<u64> {
-    counter
-        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_add(1))
-        .map_err(|_| Error::temp_storage_context("offload identity/generation exhausted"))
+    // A CAS loop is available on the declared MSRV and avoids the deprecated
+    // atomic update API on current stable toolchains.
+    let mut current = counter.load(Ordering::Acquire);
+    loop {
+        let next = current
+            .checked_add(1)
+            .ok_or_else(|| Error::temp_storage_context("offload identity/generation exhausted"))?;
+        match counter.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return Ok(current),
+            Err(observed) => current = observed,
+        }
+    }
 }
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 
@@ -1660,22 +1669,16 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let status = std::fs::read_to_string(&status_path).unwrap();
-        let mut resolved_len = None;
         let mut retained = None;
         for line in status.lines() {
             let (k, v) = line.split_once('=').unwrap();
             match k {
-                "resolved_len" => resolved_len = Some(v.parse::<u64>().unwrap()),
                 "retained" => retained = Some(v.parse::<u64>().unwrap()),
+                "resolved_parent_verified" => assert_eq!(v, "1"),
                 _ => panic!("unexpected status {line}"),
             }
         }
-        let resolved_len = resolved_len.unwrap();
         let retained = retained.unwrap();
-        // The resolved parent is the long CWD plus the short relative name:
-        // far larger than the one-character configured parent.
-        assert!(resolved_len > long_cwd.as_os_str().len() as u64);
-        assert!(resolved_len < long_cwd.as_os_str().len() as u64 + 8);
         // Retained charges are fixed control only, independent of the long
         // resolved path length.
         let expected = shared_control_charge()
@@ -1697,7 +1700,7 @@ mod tests {
         let rel = std::env::var_os("SREP_PATH_REL").unwrap();
         let status_path = std::env::var_os("SREP_PATH_STATUS").unwrap();
         let r = ResourceConfig {
-            temp_dir: std::path::PathBuf::from(rel),
+            temp_dir: std::path::PathBuf::from(rel.clone()),
             ..small()
         };
         let c = ResourceContext::with_resources(&r).unwrap();
@@ -1706,10 +1709,14 @@ mod tests {
         s.temp_directory().unwrap();
         let owner = s.directory_owner().unwrap();
         assert!(owner.parent().is_absolute());
-        let resolved_len = owner.parent().as_os_str().len() as u64;
+        // Check the path contract using the child process's actual CWD rather
+        // than assumptions about textual path length (macOS may expose a
+        // symlink-resolved /private prefix, and Windows has verbatim forms).
+        let expected_parent = std::env::current_dir().unwrap().join(&rel);
+        assert_eq!(owner.parent(), expected_parent.as_path());
         // The resolved parent is long, but managed working memory only counts
         // the fixed directory control.
-        assert!(resolved_len > 64);
+        assert!(owner.parent().as_os_str().len() > 64);
         assert_eq!(c.memory.current(), base + directory_owner_control());
         drop(owner);
         let spool = crate::codec::TempSpool::new_in_session(&s).unwrap();
@@ -1733,7 +1740,7 @@ mod tests {
         let retained = c.memory.current();
         std::fs::write(
             &status_path,
-            format!("resolved_len={resolved_len}\nretained={retained}\n"),
+            format!("resolved_parent_verified=1\nretained={retained}\n"),
         )
         .unwrap();
         io.retry_cleanup().unwrap();
@@ -1750,13 +1757,15 @@ mod tests {
     fn managed_usage_is_independent_of_path_length_for_same_object_count() {
         let short_root = tempfile::tempdir().unwrap();
         let long_root = tempfile::tempdir().unwrap();
-        // Build a long but platform-legal absolute parent: nested components
-        // each below the per-component limit, total across many components.
+        // Build a distinctly longer, but portable, absolute parent.  Keep the
+        // total below conservative native pathname limits: the assertion is
+        // about accounting independence, not exercising OS path limits.
         let mut long_parent = long_root.path().to_path_buf();
-        for _ in 0..20 {
+        for _ in 0..8 {
             long_parent.push("long-component-0123456789-abcdefghijklmnopqrstuvwxyz");
         }
-        assert!(long_parent.as_os_str().len() > 1024);
+        assert!(long_parent.as_os_str().len() > short_root.path().as_os_str().len());
+        std::fs::create_dir_all(&long_parent).unwrap();
         let short = ResourceConfig {
             temp_dir: short_root.path().to_path_buf(),
             ..small()
