@@ -83,16 +83,14 @@ fn main() {
     )
     .unwrap();
     print!(
-        "{{\"raw_candidate_count\":{},\"normalized_match_count\":{},\"covered_bytes\":{},\"literal_bytes\":{}",
-        raw_count,
+        "{{\"raw_candidate_count\":{raw_count},\"normalized_match_count\":{},\"covered_bytes\":{},\"literal_bytes\":{}",
         normalized.matches.len(),
         normalized.covered_bytes,
         normalized.literal_bytes
     );
     if let Some((seed_source, seed_target, backward, source, destination, length)) = witness {
         print!(
-            ",\"m4_witness\":{{\"seed_source\":{},\"seed_target\":{},\"backward_bytes\":{},\"source\":{},\"destination\":{},\"length\":{}}}",
-            seed_source, seed_target, backward, source, destination, length
+            ",\"m4_witness\":{{\"seed_source\":{seed_source},\"seed_target\":{seed_target},\"backward_bytes\":{backward},\"source\":{source},\"destination\":{destination},\"length\":{length}}}"
         );
     }
     println!("}}");

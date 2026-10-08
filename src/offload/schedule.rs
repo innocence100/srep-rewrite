@@ -30,6 +30,15 @@ impl<B> DiskScheduler<B> {
         Self { builder }
     }
 }
+impl<B: SelectedBuilder> DiskScheduler<B> {
+    pub(crate) fn schedule_prepared(
+        self,
+        input: ScheduleInput,
+        session: &CompressionSession,
+    ) -> Result<B::Store> {
+        schedule_input(input, session, self.builder)
+    }
+}
 
 impl<B> Scheduler<ValidatedCandidates> for DiskScheduler<B>
 where
@@ -74,8 +83,13 @@ where
     // These are deliberately separate reservations.  Sharing a single cache
     // would make candidate and live-DP eviction state interact and would also
     // make the low-memory bound dependent on access order.
-    let mut candidate_cache = RecordPageCache::new(session.memory(), CACHE_PAGES)?;
-    let mut dp_cache = RecordPageCache::new(session.memory(), CACHE_PAGES)?;
+    let pages = if session.memory().limit() >= 64 * 1024 * 1024 {
+        64
+    } else {
+        CACHE_PAGES
+    };
+    let mut candidate_cache = RecordPageCache::new(session.memory(), pages)?;
+    let mut dp_cache = RecordPageCache::new(session.memory(), pages)?;
     #[cfg(test)]
     tests::checkpoint(tests::Stage::DpCreate, session);
     let mut dp = TypedTableBuilder::<DpRow>::new(session, input_len)?;
@@ -1113,7 +1127,7 @@ mod tests {
                 .filter(|(i, _)| mask & (1 << i) != 0)
                 .map(|(_, c)| *c)
                 .collect();
-            chain.sort_by_key(key);
+            chain.sort_unstable_by_key(key);
             if chain.iter().any(|c| c.len <= 25)
                 || chain.windows(2).any(|w| w[0].dst + w[0].len > w[1].dst)
             {
@@ -1569,14 +1583,19 @@ mod tests {
         paths: usize,
     }
     fn usage(session: &CompressionSession) -> Usage {
+        // The persistent directory must exist BEFORE any usage field is
+        // sampled: temp_directory() admits and charges the directory owner,
+        // so sampling memory.current() first would produce a baseline that
+        // excludes the directory charge and break exact post-run equality.
+        let paths = std::fs::read_dir(&*session.temp_directory().unwrap())
+            .unwrap()
+            .count();
         Usage {
             memory: session.memory().current(),
             temp: session.temp().current(),
             files: session.file_usage().current,
             handles: session.handle_usage().current,
-            paths: std::fs::read_dir(&*session.temp_directory().unwrap())
-                .unwrap()
-                .count(),
+            paths,
         }
     }
     fn before_preparation(session: &CompressionSession) -> Usage {
@@ -1699,7 +1718,7 @@ mod tests {
     #[test]
     fn cancellation_before_w1_and_empty_input_semantics() {
         for input_len in [0, 8192] {
-            let (_, session, spool) = fixture_with(input_len, OffloadPolicy::default());
+            let (context, session, spool) = fixture_with(input_len, OffloadPolicy::default());
             let baseline = before_preparation(&session);
             let input = prepare(&[], &session, &spool);
             let selected = DiskScheduler::new(TestBuilder {
@@ -1713,9 +1732,18 @@ mod tests {
             assert_eq!(selected.summary.covered_bytes, 0);
             assert_eq!(selected.summary.literal_bytes, input_len as u64);
             assert_eq!(usage(&session), baseline);
+            // The persistent directory exists (created by the baseline
+            // sampling) and is removed with zero memory after session drop.
+            let dir = session.temp_directory().unwrap().to_path_buf();
+            assert!(dir.exists());
+            drop(spool);
+            drop(session);
+            assert!(!dir.exists());
+            assert_eq!(context.memory.current(), 0);
+            assert_eq!(context.temp.current(), 0);
         }
         for through_trait in [false, true] {
-            let (_, session, spool) = fixture();
+            let (context, session, spool) = fixture();
             let baseline = before_preparation(&session);
             let input = prepare(&fault_rows(), &session, &spool);
             let calls = Rc::new(RefCell::new(Calls::default()));
@@ -1740,6 +1768,13 @@ mod tests {
             assert_eq!(calls.borrow().finishes, 0);
             assert_eq!(session.io_reserved(), 0);
             assert_eq!(usage(&session), baseline);
+            let dir = session.temp_directory().unwrap().to_path_buf();
+            assert!(dir.exists());
+            drop(spool);
+            drop(session);
+            assert!(!dir.exists());
+            assert_eq!(context.memory.current(), 0);
+            assert_eq!(context.temp.current(), 0);
         }
     }
 

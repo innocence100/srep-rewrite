@@ -196,6 +196,18 @@ impl Default for RepConfig {
     }
 }
 
+/// Resource limits for one compression/decompression operation.
+///
+/// `memory` is the managed compression working-memory budget. It covers input
+/// and output buffers, candidate storage, indexes, sorting, WIS/match
+/// selection, caches, and their associated working control state. File
+/// pathname processing, runtime and allocator overhead are excluded, so
+/// `memory` is **not** a hard cap on total process RSS: additional resident
+/// memory can come from the excluded categories.
+///
+/// `temp_dir` is a file pathname location; its length does not consume the
+/// `memory` working budget. `temp_limit` is the separate on-disk temporary
+/// byte budget.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResourceConfig {
     pub memory: u64,

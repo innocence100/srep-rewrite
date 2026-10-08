@@ -307,3 +307,142 @@ fn failed_base_verification_cannot_be_bypassed_by_reusing_overlay_buffers() {
     drop(s);
     assert_eq!(c.memory.current(), 0);
 }
+
+#[test]
+fn combined_large_spill_overlay_snapshot_fallback_matches_reference() {
+    use crate::codec::compress_in_session;
+    use crate::config::{CompressionConfig, Layout, Method, RepConfig};
+    use crate::offload::session::{OffloadPolicy, SpillMode};
+    use crate::v3::writer::compress_reference;
+
+    // Eight independently patterned blocks keep the M5 candidate volume
+    // tractable while making both source-index and candidate-run spills real.
+    let mut data = (0usize..256 * 1024)
+        .map(|n| ((n.wrapping_mul(131) ^ (n / 17) ^ (n / 4093)) & 0xff) as u8)
+        .collect::<Vec<_>>();
+    let planted = data[4096..8192].to_vec();
+    data[131_072..135_168].copy_from_slice(&planted);
+    let planted = data[8192..12_288].to_vec();
+    data[196_608..200_704].copy_from_slice(&planted);
+    let planted = data[12_288..16_384].to_vec();
+    data[65_536..69_632].copy_from_slice(&planted);
+    let planted = data[16_384..20_480].to_vec();
+    data[229_376..233_472].copy_from_slice(&planted);
+    let mut config = CompressionConfig::for_method(Method::M3FixedDigest);
+    config.layout = Layout::Index;
+    config.block_size = 4096;
+    config.min_match = 4096;
+    config.seed_size = Some(4096);
+    config.rep_overlay = Some(RepConfig {
+        distance: 128 * 1024,
+        min_match: 4096,
+    });
+    config.resources.memory = 8 * 1024 * 1024;
+    config.resources.temp_limit = 64 * 1024 * 1024;
+
+    let mut reference_config = config.clone();
+    reference_config.resources.memory = 256 * 1024 * 1024;
+    let reference_context = ResourceContext::with_resources(&reference_config.resources).unwrap();
+    let reference_candidates =
+        crate::find_matches_m3(data.as_slice(), &reference_config, &reference_context).unwrap();
+    let mut reference = Vec::new();
+    let reference_stats = compress_reference(
+        data.as_slice(),
+        &mut reference,
+        &reference_config,
+        reference_candidates.iter().copied(),
+    )
+    .unwrap();
+
+    let mut context = ResourceContext::with_resources(&config.resources).unwrap();
+    context.candidate_index_memtable_bytes = Some(1);
+    let session = CompressionSession::new(
+        &context,
+        &config.resources,
+        OffloadPolicy {
+            spill_mode: SpillMode::ForceSpill,
+            ..OffloadPolicy::default()
+        },
+    )
+    .unwrap();
+    let _verifier_file = crate::offload::normalize::m3::VerifierFileScope::new(true);
+    let _deny_snapshot = crate::match_finder::snapshot::test_snapshot_limit(0);
+    let _deny_accel = crate::match_finder::fixed::disable_acceleration();
+    let sort_scope = crate::offload::sort::TestSortScope::new(2);
+    // Reset every observation immediately before the sole production call;
+    // reference generation and fixture setup cannot contaminate these counts.
+    crate::offload::test_phase_counts_reset();
+    crate::match_finder::snapshot::reset_test_denials();
+    crate::match_finder::fixed::reset_acceleration_denials();
+    crate::offload::normalize::m3::test_verifier_file_reset();
+    let mut actual = Vec::new();
+    let stats = compress_in_session(
+        data.as_slice(),
+        &mut actual,
+        &config,
+        &session,
+        None::<std::iter::Empty<crate::match_ir::MatchCandidate>>,
+    )
+    .unwrap();
+    assert_eq!(actual, reference);
+    assert_eq!(stats, reference_stats);
+    assert!(stats.semantic_match_count > 0);
+    let mut reference_plain = Vec::new();
+    crate::decompress(&reference[..], &mut reference_plain).unwrap();
+    let mut actual_plain = Vec::new();
+    crate::decompress(&actual[..], &mut actual_plain).unwrap();
+    assert_eq!(actual_plain, data);
+    assert_eq!(actual_plain, reference_plain);
+    assert_eq!(
+        crate::inspect_matches(&actual[..]).unwrap(),
+        crate::inspect_matches(&reference[..]).unwrap()
+    );
+    let (base_count, overlay_count) = crate::offload::test_phase_counts();
+    let sort_observation = sort_scope.observation();
+    let verifier_files = crate::offload::normalize::m3::test_verifier_file_count();
+    let accel_denials = crate::match_finder::fixed::acceleration_denials();
+    let snapshot_denials = crate::match_finder::snapshot::test_denials();
+    eprintln!(
+        "M3_COMBINED_OBSERVATION bytes={} base={} overlay={} source_spills={} verifier_file={} accel_denials={} snapshot_denials={} leaves={} merges={} ram_peak={} temp_peak={}",
+        data.len(),
+        base_count,
+        overlay_count,
+        context.candidate_index_spill_count(),
+        verifier_files,
+        accel_denials,
+        snapshot_denials,
+        sort_observation.interval_leaf_runs,
+        sort_observation.interval_merges,
+        context.memory.high_water(),
+        context.temp.high_water()
+    );
+    assert!(base_count > 0);
+    assert!(overlay_count > 0);
+    // Phase counters are ACTUAL qualifying emissions per phase (checked
+    // nextOrdinal - start), not phase-invocation counts: base emissions cover
+    // ordinals [0, base_count) and overlay emissions continue from there.
+    // Both phases must genuinely emit on this SAME >=256 KiB fixture; an
+    // empty overlay phase would contribute zero, not one.
+    assert!(base_count >= 1);
+    assert!(overlay_count >= 1);
+    // The inspected archive IR is the cross-check that both phases' emissions
+    // survived end to end: the bounded archive matches the reference archive
+    // (asserted above) and carries semantic matches.
+    assert!(stats.semantic_match_count > 0);
+    assert!(verifier_files > 0);
+    assert!(accel_denials > 0);
+    assert!(snapshot_denials > 0);
+    assert!(sort_observation.interval_leaf_runs > 1);
+    assert!(sort_observation.interval_merges > 0);
+    assert!(context.candidate_index_spill_count() > 0);
+    assert!(context.temp.high_water() > data.len() as u64);
+    assert!(context.memory.high_water() <= config.resources.memory);
+    assert_eq!(context.temp.current(), 0);
+    assert_eq!(session.file_usage().current, 0);
+    assert_eq!(session.handle_usage().current, 7);
+    assert_eq!(session.io_reserved(), 0);
+    let temp_root = session.temp_directory().unwrap().to_path_buf();
+    assert_eq!(std::fs::read_dir(temp_root).unwrap().count(), 0);
+    drop(session);
+    assert_eq!(context.memory.current(), 0);
+}

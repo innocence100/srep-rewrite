@@ -16,7 +16,9 @@ pub(crate) struct CandidateMetrics {
     pub(crate) chunks: u64,
     pub(crate) peak_runs: usize,
     pub(crate) peak_live_rows: u64,
+    pub(crate) cache_suppressed: u64,
 }
+#[allow(clippy::large_enum_variant)] // Fixed-size owned resource handles avoid an extra allocation.
 pub(crate) enum CandidateStore {
     Ram(RamCandidateStore),
     Disk(CandidateTableStore),
@@ -75,11 +77,14 @@ pub(crate) struct ExternalCandidateSink<'a> {
     metrics: CandidateMetrics,
     failed: bool,
     input_len: u64,
+    cache: BudgetedVec<Option<CandidateRow>>,
 }
 impl<'a> ExternalCandidateSink<'a> {
+    #[cfg(test)]
     pub(crate) fn new(s: &'a CompressionSession) -> Result<Self> {
         Self::with_chunk_limit(s, usize::MAX)
     }
+    #[cfg(test)]
     pub(crate) fn with_chunk_limit(s: &'a CompressionSession, limit: usize) -> Result<Self> {
         Self::with_input_len(s, 0, limit)
     }
@@ -93,6 +98,21 @@ impl<'a> ExternalCandidateSink<'a> {
         if limit == 0 {
             return Err(Error::memory_limit("empty candidate workspace"));
         }
+        // Bounded exact-key cache: collisions evict, never suppress other triples.
+        // Disable on forced/tiny chunks so partition/pressure tests remain real.
+        let entries = if limit == chunk.capacity() && s.policy().spill_mode == SpillMode::Adaptive {
+            let cap = (s.memory().limit() / 8 / std::mem::size_of::<Option<CandidateRow>>() as u64)
+                .min(524288) as usize;
+            if cap == 0 {
+                0
+            } else {
+                1usize << (usize::BITS - 1 - cap.leading_zeros())
+            }
+        } else {
+            0
+        };
+        let mut cache = BudgetedVec::with_capacity(entries, s.memory())?;
+        cache.resize(entries, None)?;
         Ok(Self {
             session: s,
             chunk,
@@ -101,8 +121,10 @@ impl<'a> ExternalCandidateSink<'a> {
             metrics: CandidateMetrics::default(),
             failed: false,
             input_len,
+            cache,
         })
     }
+    #[cfg(test)]
     pub(crate) fn metrics(&self) -> CandidateMetrics {
         self.metrics
     }
@@ -139,6 +161,19 @@ impl<'a> ExternalCandidateSink<'a> {
             .ok_or_else(|| Error::temp_limit("chunk count overflow"))?;
         self.metrics.peak_runs = self.metrics.peak_runs.max(self.carry.occupied() + 1);
         self.metrics.peak_live_rows = self.metrics.peak_live_rows.max(self.carry.live_rows() + n);
+        if self.metrics.chunks.is_power_of_two() {
+            self.session.profile(
+                "candidate_leaf",
+                format_args!(
+                    "E={} R={} chunks={} live_rows={} peak_runs={}",
+                    self.metrics.emitted,
+                    self.metrics.leaf_retained,
+                    self.metrics.chunks,
+                    self.carry.live_rows() + n,
+                    self.metrics.peak_runs
+                ),
+            );
+        }
         self.carry.insert(
             Run {
                 store,
@@ -159,15 +194,32 @@ impl CandidateSink for ExternalCandidateSink<'_> {
         }
         let result = (|| {
             self.session.check_cancelled()?;
-            if self.chunk.len() == self.limit {
-                self.flush()?;
-            }
-            self.chunk.push(row)?;
             self.metrics.emitted = self
                 .metrics
                 .emitted
                 .checked_add(1)
-                .ok_or_else(|| Error::temp_limit("emission count overflow"))?;
+                .ok_or_else(|| Error::temp_limit("candidate emission counter overflow"))?;
+            if !self.cache.is_empty() {
+                let c = row.candidate;
+                let mut hash = c.src.wrapping_mul(0x9e3779b97f4a7c15)
+                    ^ c.dst.rotate_left(21)
+                    ^ c.len.rotate_left(43);
+                hash ^= hash >> 30;
+                hash = hash.wrapping_mul(0xbf58476d1ce4e5b9);
+                hash ^= hash >> 27;
+                let slot = hash as usize & (self.cache.len() - 1);
+                if self.cache[slot]
+                    .is_some_and(|old| same_triple(&old, &row) && old.compare(&row).is_le())
+                {
+                    self.metrics.cache_suppressed += 1;
+                    return Ok(());
+                }
+                self.cache[slot] = Some(row);
+            }
+            if self.chunk.len() == self.limit {
+                self.flush()?;
+            }
+            self.chunk.push(row)?;
             if self.session.policy().spill_mode == SpillMode::ForceSpill {
                 self.flush()?;
             }
@@ -187,6 +239,14 @@ impl CandidateRunSink for ExternalCandidateSink<'_> {
         }
         if self.carry.is_empty() && self.session.policy().spill_mode != SpillMode::ForceSpill {
             self.canonicalize();
+            self.session.profile(
+                "triples_ready",
+                format_args!(
+                    "E={} R=0 U={} chunks=0",
+                    self.metrics.emitted,
+                    self.chunk.len()
+                ),
+            );
             return Ok(CandidateStore::Ram(RamCandidateStore {
                 rows: self.chunk,
                 cursors: Cell::new(0),
@@ -196,7 +256,19 @@ impl CandidateRunSink for ExternalCandidateSink<'_> {
         }
         self.flush()?;
         match self.carry.finish(self.session, same_triple)? {
-            Some(s) => Ok(CandidateStore::Disk(s)),
+            Some(s) => {
+                self.session.profile(
+                    "triples_ready",
+                    format_args!(
+                        "E={} R={} U={} chunks={}",
+                        self.metrics.emitted,
+                        self.metrics.leaf_retained,
+                        s.len(),
+                        self.metrics.chunks
+                    ),
+                );
+                Ok(CandidateStore::Disk(s))
+            }
             None => Ok(CandidateStore::Disk(
                 CandidateTableBuilder::new(self.session, self.input_len)?.finish()?,
             )),
@@ -427,5 +499,38 @@ mod tests {
         assert_eq!(s.file_usage().current, 0);
         assert_eq!(s.handle_usage().current, 7);
         assert!(c.temp.high_water() >= 3 * 128 + 2 * 64);
+    }
+
+    #[test]
+    fn bounded_cache_keeps_late_minimum_ordinal_and_never_hides_distinct_rows() {
+        let r = ResourceConfig {
+            memory: 8 * 1024 * 1024,
+            ..ResourceConfig::default()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let mut sink = ExternalCandidateSink::new(&s).unwrap();
+        let mut expected = Vec::new();
+        for n in (0..20_000).rev() {
+            let value = row(n % 211, n);
+            sink.emit(value).unwrap();
+            expected.push(value);
+        }
+        // Same triple arriving with a smaller ordinal must still be emitted.
+        let late = row(3, 0);
+        sink.emit(late).unwrap();
+        expected.push(late);
+        // Byte-invalid semantic fields are transported, not filtered here.
+        let mut invalid = row(999, 0);
+        invalid.candidate.len = u64::MAX;
+        sink.emit(invalid).unwrap();
+        expected.push(invalid);
+        expected.sort_unstable_by(FixedRecord::compare);
+        expected.dedup_by(|a, b| same_triple(a, b));
+        let store = sink.finish().unwrap();
+        assert_eq!(collect(&store), expected);
+        drop(store);
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.temp.current(), 0);
     }
 }

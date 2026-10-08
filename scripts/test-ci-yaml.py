@@ -241,7 +241,7 @@ def assert_required_gates(text: str) -> None:
         f"{NATIVE_JOB}:",
         "runs-on: ${{ matrix.os }}",
         "fail-fast: false",
-        "timeout-minutes: 45",
+        "timeout-minutes: 360",
         "python3 scripts/test-fidelity-evaluator.py",
         "cargo run --bin requirement-audit -- --check",
         "id: mingw",
@@ -273,10 +273,29 @@ def assert_required_gates(text: str) -> None:
         assert text.count(f"  {name}") == 1, f"{name} must appear once"
 
 
+RUNNER_JOBS = (VERIFY_JOB, WINDOWS_JOB, NATIVE_JOB)
+RUNNER_TIMEOUT_MINUTES = 360
+
+
+def assert_runner_timeouts(doc: dict[str, Any]) -> None:
+    jobs = doc.get("jobs") or {}
+    missing = [name for name in RUNNER_JOBS if name not in jobs]
+    assert not missing, f"missing CI jobs for timeout check: {missing}"
+    bad = {
+        name: (jobs[name] or {}).get("timeout-minutes")
+        for name in RUNNER_JOBS
+        if (jobs[name] or {}).get("timeout-minutes") != RUNNER_TIMEOUT_MINUTES
+    }
+    assert not bad, (
+        f"CI jobs must allow the full suite (timeout-minutes: {RUNNER_TIMEOUT_MINUTES}): {bad}"
+    )
+
+
 def validate(doc: dict[str, Any], text: str, msrv: str) -> None:
     assert_required_gates(text)
     assert_native_matrix(doc, msrv)
     assert_platform_coverage(doc, msrv)
+    assert_runner_timeouts(doc)
 
 
 def mutate_missing_os(doc: dict[str, Any]) -> dict[str, Any]:
@@ -365,6 +384,18 @@ def self_check(doc: dict[str, Any], msrv: str) -> None:
     expect_failure(mutate_drop_native_test_threads(doc), "RUST_TEST_THREADS=1")
     expect_failure(mutate_drop_windows_test_threads(doc), "RUST_TEST_THREADS=1")
     expect_failure(mutate_serialize_verify_debug_tests(doc), "do not serialize Linux verify")
+    try:
+        assert_runner_timeouts(mutate_runner_timeout(doc))
+    except AssertionError as error:
+        assert "360" in str(error), f"expected 360 in {error}"
+    else:
+        raise AssertionError("shortened runner timeout was accepted")
+
+
+def mutate_runner_timeout(doc: dict[str, Any]) -> dict[str, Any]:
+    mutated = copy.deepcopy(doc)
+    mutated["jobs"][VERIFY_JOB]["timeout-minutes"] = 45
+    return mutated
 
 
 def main() -> int:

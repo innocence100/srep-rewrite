@@ -798,9 +798,10 @@ fn usage() -> &'static str {
      SREP-NG v3 is the default archive format (per-block CRC32C plus global xxh3/blake3 digests). Stage 8 implements real m0 through m5 matching with a deterministic RAM-or-spill CandidateIndex; m5 is exhaustive and supports the REP overlay.\n\
      compress options: --method m0|m1|m2|m3|m4|m5 (-m0..-m5) --layout index|future|io --checksum xxh3|blake3 --block-size SIZE --min-match SIZE --seed-size SIZE --target-chunk SIZE --max-distance SIZE --rep-overlay --rep-distance SIZE --rep-min-match SIZE --force --quiet\n\
      --seed-size is valid for m3/m4 (default equals --min-match); --target-chunk is valid for m1/m2 (default 4096).\n\
-other options: --force --quiet --memory SIZE --temp-dir PATH --temp-limit SIZE --output-limit SIZE\n\
-SIZE units: B, KiB/K, MiB/M, GiB/G (binary powers of 1024); '-' means stdin/stdout\n\
-default output suffix is .srep"
+ other options: --force --quiet --memory SIZE --temp-dir PATH --temp-limit SIZE --output-limit SIZE\n\
+ --memory SIZE limits managed compression working memory: input/output buffers, candidate storage, indexes, sorting, WIS/match selection, caches, and their working control state. File pathname processing, runtime and allocator overhead are excluded; it is NOT a hard cap on total process RSS. Additional resident memory beyond --memory can come from those excluded categories.\n\
+ SIZE units: B, KiB/K, MiB/M, GiB/G (binary powers of 1024); '-' means stdin/stdout\n\
+ default output suffix is .srep"
 }
 
 #[cfg(test)]
@@ -869,6 +870,19 @@ mod tests {
         assert_eq!(fs::read(&destination).unwrap(), b"old archive");
         assert!(!temp_path.exists());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn help_documents_managed_memory_contract_and_exclusions() {
+        let help = super::usage();
+        assert!(help.contains("--memory SIZE limits managed compression working memory"));
+        assert!(help.contains(
+            "input/output buffers, candidate storage, indexes, sorting, WIS/match selection, caches"
+        ));
+        assert!(
+            help.contains("File pathname processing, runtime and allocator overhead are excluded")
+        );
+        assert!(help.contains("it is NOT a hard cap on total process RSS"));
     }
 
     #[test]

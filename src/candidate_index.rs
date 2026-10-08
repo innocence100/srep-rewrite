@@ -14,9 +14,7 @@ use crate::config::ResourceConfig;
 use crate::error::{Error, ErrorKind, Result};
 use crate::resource::{BudgetedVec, MemoryBudget, Reservation, ResourceContext};
 
-use crate::offload::contracts::{
-    CodecSourceIndex, CodecSourceIndexFactory, SourceVerifier, VerifiedSourcePages,
-};
+use crate::offload::contracts::{CodecSourceIndexFactory, SourceVerifier, VerifiedSourcePages};
 use crate::offload::session::{CompressionSession, SourceLoan};
 use crate::offload::storage::{PagedSourceTable, SourcePageBuilder, SourcePageCache};
 
@@ -1781,6 +1779,7 @@ impl<'a> CodecPagedIndex<'a> {
         self.session.check_cancelled()
     }
 
+    #[cfg(test)]
     pub(crate) fn metrics(&self) -> CodecIndexMetrics {
         self.metrics.get()
     }
@@ -1957,10 +1956,8 @@ impl<'a> CodecPagedIndex<'a> {
                 if position < table.entry_count() {
                     heads[selected] = Some(self.read_cached(table, position)?);
                 }
-            } else if source == CODEC_MAX_RUNS {
-                if position < self.memtable.len() as u64 {
-                    heads[selected] = Some(self.memtable[position as usize]);
-                }
+            } else if source == CODEC_MAX_RUNS && position < self.memtable.len() as u64 {
+                heads[selected] = Some(self.memtable[position as usize]);
             }
         }
         builder.finish()
@@ -2082,6 +2079,30 @@ impl<'a> CodecPagedIndex<'a> {
         max_distance: u64,
         callback: &mut dyn FnMut(IndexEntry) -> Result<()>,
     ) -> Result<()> {
+        if self.run_count == 0 {
+            let first = self.memtable_lower_bound(kind, key);
+            for &entry in &self.memtable.as_slice()[first..] {
+                self.session.check_cancelled()?;
+                if entry.key_kind != kind || entry.key_slice() != key {
+                    break;
+                }
+                if entry.position >= before {
+                    continue;
+                }
+                if max_distance != 0 && before - entry.position > max_distance {
+                    break;
+                }
+                callback(entry)?;
+                self.note(|m| {
+                    m.yielded = m
+                        .yielded
+                        .checked_add(1)
+                        .ok_or_else(|| Error::temp_limit("source metric overflow"))?;
+                    Ok(())
+                })?;
+            }
+            return Ok(());
+        }
         let mut heads: [Option<IndexEntry>; CODEC_MAX_SOURCES] = std::array::from_fn(|_| None);
         let mut positions: [u64; CODEC_MAX_SOURCES] = [0; CODEC_MAX_SOURCES];
         let mut sources = 0usize;
@@ -2268,11 +2289,9 @@ impl CodecPagedIndex<'_> {
             || self.memtable.capacity() == self.memtable.len()
         {
             self.checkpoint(Some(entry))?;
-        } else {
-            if let Err(error) = self.memtable.insert_sorted(entry) {
-                self.poisoned.set(true);
-                return Err(error);
-            }
+        } else if let Err(error) = self.memtable.insert_sorted(entry) {
+            self.poisoned.set(true);
+            return Err(error);
         }
         self.last_position = Some(entry.position);
         self.last_ordinal = Some(entry.insertion_ordinal);
@@ -2316,8 +2335,6 @@ impl SourceVerifier for CodecPagedIndex<'_> {
     }
 }
 
-impl CodecSourceIndex for CodecPagedIndex<'_> {}
-
 pub(crate) struct CodecPagedIndexFactory<'a> {
     session: &'a CompressionSession,
 }
@@ -2339,6 +2356,7 @@ impl<'a> CodecSourceIndexFactory for CodecPagedIndexFactory<'a> {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn new_codec_candidate_index(
     session: &CompressionSession,
 ) -> Result<CodecPagedIndex<'_>> {

@@ -32,6 +32,7 @@ thread_local! {
         const { std::cell::Cell::new(0) };
     static TEST_EXACT_COMPARE_COUNT: std::cell::Cell<u64> =
         const { std::cell::Cell::new(0) };
+    static TEST_ACCELERATION_DENIALS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -107,6 +108,14 @@ pub(crate) fn deny_acceleration_stage(stage: u8) -> AccelerationStageDenialGuard
 pub(crate) fn last_acceleration_active() -> Option<bool> {
     TEST_LAST_ACCELERATION_STATE.with(std::cell::Cell::get)
 }
+#[cfg(test)]
+pub(crate) fn acceleration_denials() -> u64 {
+    TEST_ACCELERATION_DENIALS.with(std::cell::Cell::get)
+}
+#[cfg(test)]
+pub(crate) fn reset_acceleration_denials() {
+    TEST_ACCELERATION_DENIALS.with(|v| v.set(0));
+}
 
 #[cfg(test)]
 fn record_digest_compare() {
@@ -165,6 +174,7 @@ impl DataSource for SnapshotSource<'_> {
 }
 
 impl FixedAcceleration {
+    #[cfg(test)]
     fn try_new(spool: &InputSpool, context: &ResourceContext) -> Result<Option<Self>> {
         Self::try_new_inner(spool, context, None)
     }
@@ -175,6 +185,7 @@ impl FixedAcceleration {
     ) -> Result<Option<Self>> {
         #[cfg(test)]
         if TEST_DISABLE_ACCELERATION.with(std::cell::Cell::get) {
+            TEST_ACCELERATION_DENIALS.with(|v| v.set(v.get().saturating_add(1)));
             TEST_LAST_ACCELERATION_STATE.with(|state| state.set(Some(false)));
             return Ok(None);
         }
@@ -202,7 +213,11 @@ impl FixedAcceleration {
             let _bytes_denial = Self::stage_denial(context, 1);
             let mut bytes = match BudgetedVec::with_capacity(length, &context.memory) {
                 Ok(bytes) => bytes,
-                Err(error) if error.kind() == ErrorKind::MemoryBudgetExceeded => return Ok(None),
+                Err(error) if error.kind() == ErrorKind::MemoryBudgetExceeded => {
+                    #[cfg(test)]
+                    TEST_ACCELERATION_DENIALS.with(|v| v.set(v.get().saturating_add(1)));
+                    return Ok(None);
+                }
                 Err(error) => return Err(error),
             };
             bytes.resize(length, 0)?;
@@ -220,7 +235,11 @@ impl FixedAcceleration {
             let _run_denial = Self::stage_denial(context, 2);
             let mut run = match BudgetedVec::with_capacity(length, &context.memory) {
                 Ok(run) => run,
-                Err(error) if error.kind() == ErrorKind::MemoryBudgetExceeded => return Ok(None),
+                Err(error) if error.kind() == ErrorKind::MemoryBudgetExceeded => {
+                    #[cfg(test)]
+                    TEST_ACCELERATION_DENIALS.with(|v| v.set(v.get().saturating_add(1)));
+                    return Ok(None);
+                }
                 Err(error) => return Err(error),
             };
             run.resize(length, 0)?;
@@ -239,7 +258,11 @@ impl FixedAcceleration {
             let _rev_denial = Self::stage_denial(context, 3);
             let mut rev_run = match BudgetedVec::with_capacity(length, &context.memory) {
                 Ok(rev_run) => rev_run,
-                Err(error) if error.kind() == ErrorKind::MemoryBudgetExceeded => return Ok(None),
+                Err(error) if error.kind() == ErrorKind::MemoryBudgetExceeded => {
+                    #[cfg(test)]
+                    TEST_ACCELERATION_DENIALS.with(|v| v.set(v.get().saturating_add(1)));
+                    return Ok(None);
+                }
                 Err(error) => return Err(error),
             };
             rev_run.resize(length, 0)?;
@@ -521,16 +544,6 @@ pub(crate) fn find_matches_spooled(
     find_matches_spooled_with_filters(spool, config, context, method, None, None)
 }
 
-pub(crate) fn find_matches_spooled_for_normalization(
-    spool: &InputSpool,
-    config: &CompressionConfig,
-    context: &ResourceContext,
-    method: Method,
-) -> Result<BudgetedVec<MatchCandidate>> {
-    let mut reducer = ExactIntervalFilter::new(&context.memory)?;
-    find_matches_spooled_with_filters(spool, config, context, method, None, Some(&mut reducer))
-}
-
 #[cfg(test)]
 #[allow(dead_code)]
 pub(crate) fn find_matches_spooled_compact(
@@ -741,6 +754,7 @@ where
     Ok((output, next))
 }
 
+#[allow(clippy::too_many_arguments)] // Explicit codec/test injection seam, no hidden shared state.
 pub(crate) fn emit_matches_m3_spooled<D>(
     spool: &InputSpool,
     config: &CompressionConfig,
@@ -777,6 +791,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn enumerate_m3<D>(
     spool: &InputSpool,
     config: &CompressionConfig,
@@ -1078,6 +1093,7 @@ where
     Ok((output, next))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn enumerate_m4<H>(
     spool: &InputSpool,
     config: &CompressionConfig,
@@ -1272,6 +1288,7 @@ where
 /// boundary while the private index replacement is wired by the parent.
 /// `index` is intentionally accepted as part of the frozen seam so callers
 /// cannot accidentally use the public adaptive index on the bounded path.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_matches_m4_spooled<H>(
     spool: &InputSpool,
     config: &CompressionConfig,

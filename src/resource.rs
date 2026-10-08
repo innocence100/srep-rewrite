@@ -632,6 +632,12 @@ impl Drop for Reservation {
     }
 }
 
+/// Shared budgets and location for one operation. `memory` is the managed
+/// working-memory budget; its bytes cover input/output buffers, candidate
+/// storage, indexes, sorting, WIS/match selection, caches, and their working
+/// control state. File pathname processing, runtime and allocator overhead are
+/// excluded, so it is not a hard cap on total process RSS. `temp_dir` is a
+/// pathname location whose length does not consume the `memory` budget.
 #[derive(Clone, Debug)]
 pub struct ResourceContext {
     pub memory: MemoryBudget,

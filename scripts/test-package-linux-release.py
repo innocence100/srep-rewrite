@@ -15,6 +15,34 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "package-linux-release.sh"
 
+def _manifest_version() -> str:
+    """Live Cargo.toml package version of the repo under test (never hardcoded)."""
+    import tomllib
+
+    with (ROOT / "Cargo.toml").open("rb") as handle:
+        version = tomllib.load(handle)["package"]["version"]
+    assert isinstance(version, str) and version, "Cargo.toml package.version must be a non-empty string"
+    return version
+
+
+MANIFEST_VERSION = _manifest_version()
+
+
+def stage_name(repo: Path = ROOT) -> str:
+    """Staged package root for `repo`: the packager derives it from that repo's
+    live Cargo.toml package version, so mini-repo fixtures (0.1.1) and the real
+    repo under test (whatever its manifest says) are both handled without a
+    hardcoded version."""
+    if repo == ROOT:
+        version = MANIFEST_VERSION
+    else:
+        import tomllib
+
+        with (repo / "Cargo.toml").open("rb") as handle:
+            version = tomllib.load(handle)["package"]["version"]
+    return f"srep-v{version}-x86_64-unknown-linux-gnu"
+
+
 
 def run(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -193,13 +221,13 @@ def test_matching_sidecar_records_build_not_packaging_compiler() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / f"{stage_name()}" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Provenance kind: sidecar" in notices
         assert "Build compiler: rustc 1.96.0 (test sidecar)" in notices
         assert "Packaging-time metadata (not a substitute for build provenance)" in notices
         assert "UNPROVENANCED" not in notices
-        tarball = tmp / "out" / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz"
+        tarball = tmp / "out" / f"{stage_name()}.tar.gz"
         assert not tarball.exists()
         assert "SREP_RELEASE_BIN=" in result.stdout
         assert "release-smoke.sh" in result.stdout
@@ -282,7 +310,7 @@ def test_clean_tree_is_not_labeled_dirty() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / f"{stage_name(repo)}" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Packaging worktree: clean" in notices
         assert "This packaging tree is dirty" not in notices
@@ -323,7 +351,7 @@ def test_dirty_tree_is_labeled_dirty() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / f"{stage_name(repo)}" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Packaging worktree: dirty" in notices
         assert "This packaging tree is dirty" in notices
@@ -364,7 +392,7 @@ def test_tar_failure_leaves_no_publishable_artifact() -> None:
         )
         assert result.returncode != 0, result.stdout + result.stderr
         assert "tar failed" in result.stderr
-        assert not (out_dir / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz").exists()
+        assert not (out_dir / f"{stage_name()}.tar.gz").exists()
         assert not (out_dir / "SHA256SUMS").exists()
         leftovers = list(out_dir.glob("*.tar.gz")) + list(out_dir.glob("SHA256SUMS*"))
         assert leftovers == []
@@ -405,7 +433,7 @@ def test_gzip_failure_leaves_no_publishable_artifact() -> None:
         )
         assert result.returncode != 0, result.stdout + result.stderr
         assert "gzip failed" in result.stderr
-        assert not (out_dir / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz").exists()
+        assert not (out_dir / f"{stage_name()}.tar.gz").exists()
         assert not (out_dir / "SHA256SUMS").exists()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -439,7 +467,7 @@ def test_successful_tar_layout_and_checksum() -> None:
             env=env,
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        tarball = out_dir / "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz"
+        tarball = out_dir / f"{stage_name()}.tar.gz"
         sums = out_dir / "SHA256SUMS"
         assert tarball.is_file()
         assert sums.is_file()
@@ -447,9 +475,9 @@ def test_successful_tar_layout_and_checksum() -> None:
         assert check.returncode == 0, check.stdout + check.stderr
         with tarfile.open(tarball, "r:gz") as archive:
             names = archive.getnames()
-        assert "srep-v0.1.1-x86_64-unknown-linux-gnu/srep" in names
-        assert "srep-v0.1.1-x86_64-unknown-linux-gnu/NOTICES" in names
-        assert "srep-v0.1.1-x86_64-unknown-linux-gnu/README.md" in names
+        assert f"{stage_name()}/srep" in names
+        assert f"{stage_name()}/NOTICES" in names
+        assert f"{stage_name()}/README.md" in names
         assert "SREP_RELEASE_BIN=" in result.stdout
         assert "scripts/release-smoke.sh" in result.stdout
     finally:
@@ -499,7 +527,7 @@ def test_rust_std_copyright_is_copied_and_bound() -> None:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         notices = (
-            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / f"{stage_name()}" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Copyright notices for The Rust Standard Library" in notices
         assert "gimli" in notices
@@ -712,7 +740,7 @@ def test_predictable_provenance_env_symlink_is_not_clobbered_or_sourced() -> Non
             assert path.is_symlink(), path
             assert path.resolve() == victim.resolve()
         notices = (
-            tmp / "stage" / "srep-v0.1.1-x86_64-unknown-linux-gnu" / "NOTICES"
+            tmp / "stage" / f"{stage_name()}" / "NOTICES"
         ).read_text(encoding="utf-8")
         assert "Provenance kind: sidecar" in notices
         assert "PWNED" not in notices

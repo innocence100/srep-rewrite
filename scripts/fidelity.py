@@ -598,9 +598,22 @@ def xz_version() -> str:
 
 
 class CommandTimeoutError(RuntimeError):
-    def __init__(self, command: list[str], timeout: float) -> None:
+    def __init__(
+        self,
+        command: list[str],
+        timeout: float,
+        *,
+        stdout: object = None,
+        stderr: object = None,
+        termination: str = "timeout",
+    ) -> None:
         self.command = list(command)
         self.timeout = timeout
+        # Retain whatever output was captured before the timeout plus the
+        # termination outcome, so a timed-out command is still diagnosed.
+        self.captured_stdout = stdout
+        self.captured_stderr = stderr
+        self.termination = termination
         super().__init__(f"command timed out after {timeout}s: {command}")
 
 
@@ -612,6 +625,13 @@ def _positive_seconds(value: str) -> float:
     if not math.isfinite(timeout) or timeout <= 0:
         raise argparse.ArgumentTypeError("command timeout must be a positive number of seconds")
     return timeout
+
+
+def _command_timeout(value: str) -> float | None:
+    """Explicit opt-out for authorized long runs; numeric validation unchanged."""
+    if value.lower() == "none":
+        return None
+    return _positive_seconds(value)
 
 
 def _emit_progress(message: str) -> None:
@@ -665,6 +685,15 @@ def _wait_bounded(process: subprocess.Popen) -> None:
 
 
 def _reap_timed_process(process: subprocess.Popen) -> tuple[object, object]:
+    """Reap a timed process group and return its most complete output.
+
+    Returns the `communicate()` output from either the post-SIGTERM or
+    post-SIGKILL reaping attempt, whichever is available.  Only if both
+    bounded communicates time out does this return `(None, None)`; callers
+    then fall back to the initial `TimeoutExpired` snapshot.  This captures
+    diagnostics printed by a SIGTERM handler during shutdown, which the
+    initial `TimeoutExpired.stdout/stderr` snapshot may not include.
+    """
     _signal_process_group(process, signal.SIGTERM)
     try:
         return process.communicate(timeout=_REAP_GRACE_SECONDS)
@@ -721,16 +750,22 @@ def run_command(
                 process.stdin.close()
             except OSError:
                 pass
-        try:
-            _reap_timed_process(process)
-        finally:
-            # The leader may have exited as a result of SIGTERM while a
-            # descendant remains alive.  Group cleanup is therefore
-            # deliberately independent of the leader's return code.
-            _signal_process_group(process, signal.SIGKILL)
-            _close_process_pipes(process)
-            _wait_bounded(process)
-        raise CommandTimeoutError(command, timeout) from expired
+        # The initial TimeoutExpired snapshot may miss output printed by a
+        # SIGTERM/SIGKILL handler during shutdown.  The bounded reaper's
+        # communicate() output is more complete, so prefer it and only fall
+        # back to the initial snapshot when the reaper produced nothing.
+        reaped_out, reaped_err = _reap_timed_process(process)
+        _signal_process_group(process, signal.SIGKILL)
+        _close_process_pipes(process)
+        _wait_bounded(process)
+        captured_out = reaped_out if reaped_out is not None else expired.stdout
+        captured_err = reaped_err if reaped_err is not None else expired.stderr
+        raise CommandTimeoutError(
+            command,
+            timeout,
+            stdout=captured_out,
+            stderr=captured_err,
+        ) from expired
     result = subprocess.CompletedProcess(command, process.returncode, out, err)
     if check and result.returncode != 0:
         raise subprocess.CalledProcessError(
@@ -740,13 +775,31 @@ def run_command(
 
 
 def run_info(binary: Path, archive: Path, *, timeout: float | None = None) -> dict[str, int | str]:
-    result = run_command(
-        [os.fspath(binary), "info", os.fspath(archive)],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    command = [os.fspath(binary), "info", os.fspath(archive)]
+    try:
+        result = run_command(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except CommandTimeoutError as error:
+        _COMMAND_LOG.record_extra(
+            "info",
+            command,
+            stdout=error.captured_stdout,
+            stderr=error.captured_stderr,
+            exit_code=None,
+            termination="timeout",
+            error=str(error),
+        )
+        raise
+    _record_command_output("info", result)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, command, output=result.stdout, stderr=result.stderr
+        )
     values: dict[str, int | str] = {}
     for line in result.stdout.splitlines():
         if ": " not in line:
@@ -762,6 +815,98 @@ def run_info(binary: Path, archive: Path, *, timeout: float | None = None) -> di
     return values
 
 
+class _CommandLog:
+    """Per-row retained command transcripts (stdout/stderr), including failures.
+
+    Entries are (stage, argv, returncode, stdout_bytes, stderr_bytes).  The
+    active log is reset at the start of every row; it is drained into the row
+    record after the row completes or fails, so a failed command's stderr is
+    never lost.  OFFLOAD_PROFILE lines live on stderr and are therefore
+    retained verbatim.
+    """
+
+    def __init__(self) -> None:
+        self.entries: list[tuple[str, list[str], int, bytes, bytes]] = []
+
+    def clear(self) -> None:
+        del self.entries[:]
+
+    @staticmethod
+    def _as_bytes(value: object) -> bytes:
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, str):
+            return value.encode("utf-8", "replace")
+        return b""
+
+    def record(self, stage: str, result: subprocess.CompletedProcess) -> None:
+        self.entries.append(
+            (
+                stage,
+                list(result.args),
+                result.returncode,
+                self._as_bytes(result.stdout),
+                self._as_bytes(result.stderr),
+                None,
+            )
+        )
+
+    def record_extra(
+        self,
+        stage: str,
+        argv: list[str],
+        *,
+        stdout: object = None,
+        stderr: object = None,
+        exit_code: int | None = None,
+        termination: str | None = None,
+        artifact: dict[str, object] | None = None,
+        error: str | None = None,
+    ) -> None:
+        self.entries.append(
+            (
+                stage,
+                list(argv),
+                exit_code,
+                self._as_bytes(stdout),
+                self._as_bytes(stderr),
+                {
+                    "termination": termination,
+                    "artifact": artifact,
+                    "error": error,
+                },
+            )
+        )
+
+    def drain(self) -> list[dict[str, object]]:
+        records: list[dict[str, object]] = []
+        for stage, argv, returncode, stdout, stderr, extra in self.entries:
+            record: dict[str, object] = {
+                "stage": stage,
+                "argv": argv,
+                "exit_code": returncode,
+                "stdout": stdout.decode("utf-8", "replace"),
+                "stderr": stderr.decode("utf-8", "replace"),
+            }
+            if extra is not None:
+                if extra.get("termination") is not None:
+                    record["termination"] = extra["termination"]
+                if extra.get("artifact") is not None:
+                    record["artifact"] = extra["artifact"]
+                if extra.get("error") is not None:
+                    record["error"] = extra["error"]
+            records.append(record)
+        self.clear()
+        return records
+
+
+_COMMAND_LOG = _CommandLog()
+
+
+def _record_command_output(stage: str, result: subprocess.CompletedProcess) -> None:
+    _COMMAND_LOG.record(stage, result)
+
+
 def roundtrip(
     binary: Path,
     archive: Path,
@@ -769,36 +914,105 @@ def roundtrip(
     directory: Path,
     *,
     timeout: float | None = None,
+    resource: dict[str, str | None] | None = None,
 ) -> None:
     restored = directory / f"{archive.stem}.restored"
-    run_command(
-        [os.fspath(binary), "test", os.fspath(archive)],
-        check=True,
+    test_command = [os.fspath(binary), "test", os.fspath(archive)]
+    test_result = run_command(
+        test_command,
+        check=False,
         capture_output=True,
         timeout=timeout,
     )
-    run_command(
-        [os.fspath(binary), "decompress", os.fspath(archive), os.fspath(restored)],
-        check=True,
+    _record_command_output("test", test_result)
+    if test_result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            test_result.returncode, test_command, output=test_result.stdout, stderr=test_result.stderr
+        )
+    decompress_command = decompress_argv(binary, archive, restored, resource=resource)
+    decompress_result = run_command(
+        decompress_command,
+        check=False,
         capture_output=True,
         timeout=timeout,
     )
+    _record_command_output("decompress", decompress_result)
+    if decompress_result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            decompress_result.returncode,
+            decompress_command,
+            output=decompress_result.stdout,
+            stderr=decompress_result.stderr,
+        )
     if restored.read_bytes() != source.read_bytes():
         raise RuntimeError(f"round-trip mismatch for {archive.name}")
+
+
+def _artifact_fact(path: Path) -> dict[str, object]:
+    """Honest artifact fact: existence, byte size, and sha256 if readable."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return {"path": os.fspath(path), "exists": False, "bytes": None, "sha256": None}
+    return {
+        "path": os.fspath(path),
+        "exists": True,
+        "bytes": size,
+        "sha256": _safe_file_sha256(path),
+    }
 
 
 def xz_archive(
     archive: Path, directory: Path, *, timeout: float | None = None
 ) -> tuple[int, str]:
     output = directory / f"{archive.name}.xzraw"
-    with output.open("wb") as stream:
-        run_command(
-            [*XZ_ARGS, "-c", os.fspath(archive)],
-            check=True,
-            stdout=stream,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
+    command = [*XZ_ARGS, "-c", os.fspath(archive)]
+    try:
+        with output.open("wb") as stream:
+            result = run_command(
+                command,
+                check=False,
+                stdout=stream,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+            )
+    except CommandTimeoutError as error:
+        # The output stream is closed here, so the partial `.xzraw` bytes are
+        # flushed and stat-able.  Record the timeout argv/status/termination,
+        # the retained partial artifact fact, the reaped stderr, and the
+        # captured text when stdout was not redirected to a file.
+        _COMMAND_LOG.record_extra(
+            "xz",
+            command,
+            stdout=None,
+            stderr=error.captured_stderr,
+            exit_code=None,
+            termination="timeout",
+            artifact=_artifact_fact(output),
+            error=str(error),
         )
+        raise
+    if result.returncode != 0:
+        _COMMAND_LOG.record_extra(
+            "xz",
+            command,
+            stderr=result.stderr,
+            exit_code=result.returncode,
+            artifact=_artifact_fact(output),
+            error="xz exited nonzero",
+        )
+        raise subprocess.CalledProcessError(
+            result.returncode, command, output=result.stdout, stderr=result.stderr
+        )
+    # The xz output is a raw LZMA2 artifact, not binary text: record its path,
+    # size, and (bounded) sha256 rather than decoding it.
+    _COMMAND_LOG.record_extra(
+        "xz",
+        command,
+        stderr=result.stderr,
+        exit_code=result.returncode,
+        artifact=_artifact_fact(output),
+    )
     return output.stat().st_size, xz_version()
 
 
@@ -815,13 +1029,56 @@ def old_argv(binary: Path, method: str, source: Path, archive: Path) -> list[str
     return args
 
 
-def new_argv(binary: Path, method: str, source: Path, archive: Path) -> list[str]:
+#: Resource flags the srep CLI accepts on compress/decompress.  test/info do
+#: not take resource flags; the evaluator must never pass them there.
+RESOURCE_STAGES = ("compress", "decompress")
+
+
+def resource_argv(resource: dict[str, str | None]) -> list[str]:
+    """Translate validated evaluate resource options into CLI flags.
+
+    Only resource flags are emitted here; method/layout/checksum selection is
+    owned by the caller.  Absent options emit nothing, preserving the old
+    default behavior byte-for-byte.
+    """
+    values: list[str] = []
+    if resource.get("memory") is not None:
+        values.extend(["--memory", str(resource["memory"])])
+    if resource.get("temp_dir") is not None:
+        values.extend(["--temp-dir", str(resource["temp_dir"])])
+    if resource.get("temp_limit") is not None:
+        values.extend(["--temp-limit", str(resource["temp_limit"])])
+    return values
+
+
+def new_argv(
+    binary: Path,
+    method: str,
+    source: Path,
+    archive: Path,
+    *,
+    resource: dict[str, str | None] | None = None,
+) -> list[str]:
     values = [os.fspath(binary), "compress", "--method", method, "--layout", "index", "--checksum", "xxh3", "--block-size", "8KiB"]
     if method in {"m1", "m2"}:
         values.extend(["--min-match", "32", "--target-chunk", "4096"])
     else:
         values.extend(["--min-match", "512"])
+    values.extend(resource_argv(resource or {}))
     values.extend([os.fspath(source), os.fspath(archive)])
+    return values
+
+
+def decompress_argv(
+    binary: Path,
+    archive: Path,
+    restored: Path,
+    *,
+    resource: dict[str, str | None] | None = None,
+) -> list[str]:
+    values = [os.fspath(binary), "decompress"]
+    values.extend(resource_argv(resource or {}))
+    values.extend([os.fspath(archive), os.fspath(restored)])
     return values
 
 
@@ -879,6 +1136,7 @@ def _baseline_impl(args: argparse.Namespace, staged_manifests: list[Path]) -> in
         sample = dict(sample)
         rows: dict[str, object] = {}
         for method in METHODS:
+            _COMMAND_LOG.clear()
             archive = directory / f"{sample['id']}-{method}.srep"
             subprocess.run(old_argv(old_binary, method, paths[sample["id"]], archive), check=True, capture_output=True)
             info = run_info(args.decoder.resolve(), archive)
@@ -944,13 +1202,113 @@ def geometric_mean(values: list[float]) -> float:
     return math.exp(sum(math.log(value) for value in values) / len(values))
 
 
+#: Versioned quality gate. The user revised the quality policy to a per-method
+#: strict-majority rule on the fixed 12-sample corpus: a method passes when
+#: strictly more than half of its complete fixed rows have a final-XZ stream
+#: STRICTLY smaller than the frozen historical baseline (ties do not win).
+#: Coverage remains a gate; the old size_geomean/raw_size booleans are retained
+#: as clearly-named diagnostics, not active gates.
+QUALITY_POLICY_ID = "majority-final-xz-v1"
+COVERAGE_GEOMEAN_THRESHOLD = 0.95
+#: The fixed 12-sample corpus IDs the majority policy is defined over. The
+#: active gate only applies to this exact fixed population; a different or
+#: incomplete population is not silently judged under it.
+POLICY_FIXED_SAMPLE_IDS = (
+    "fidelity-v1-01", "fidelity-v1-02", "fidelity-v1-03", "fidelity-v1-04",
+    "fidelity-v1-05", "fidelity-v1-06", "fidelity-v1-07", "fidelity-v1-08",
+    "fidelity-v1-09", "fidelity-v1-10", "fidelity-v1-11", "fidelity-v1-12",
+)
+#: Historical/diagnostic thresholds, kept for reporting only.
+LEGACY_SIZE_GEOMEAN_MAX = 1.05
+LEGACY_RAW_SIZE_MAX = 1.10
+
+
+def majority_size_verdict(
+    method: str,
+    rows: list[dict[str, object]],
+    *,
+    expected_ids: tuple[str, ...] = POLICY_FIXED_SAMPLE_IDS,
+) -> dict[str, object]:
+    """Per-method strict-majority final-XZ verdict over the complete fixed rows.
+
+    Comparison is integer byte comparison of `new final_size` vs
+    `old final_size` (never a float cutoff).  `wins*2 > len(rows)` is strict
+    majority; equal bytes are ties and do not win.  `new final_size` must be a
+    positive integer (0 is not a win) and `old final_size` must be positive.
+
+    The population MUST be exactly the frozen fixed sample IDs: the row count,
+    the unique-ID set, and the absence of duplicates are validated here, so a
+    missing row, duplicate ID, unexpected ID, or a short/empty population
+    raises instead of silently passing.  This is the active policy's
+    fixed-population guard, not a size-agnostic helper.
+    """
+    row_ids = [row["id"] for row in rows]
+    expected = list(expected_ids)
+    if len(row_ids) != len(expected):
+        raise RuntimeError(
+            f"majority population for {method} has {len(row_ids)} rows; {len(expected)} required"
+        )
+    if len(set(row_ids)) != len(row_ids):
+        raise RuntimeError(f"duplicate sample id in majority population for {method}")
+    if set(row_ids) != set(expected):
+        missing = sorted(set(expected) - set(row_ids))
+        unexpected = sorted(set(row_ids) - set(expected))
+        raise RuntimeError(
+            f"majority population for {method} id mismatch; missing={missing} unexpected={unexpected}"
+        )
+    wins = ties = losses = 0
+    comparisons: list[dict[str, object]] = []
+    for row in rows:
+        raw_new = row["new"]["final_size"]
+        raw_old = row["old"]["final_size"]
+        if not isinstance(raw_new, int) or isinstance(raw_new, bool):
+            raise RuntimeError(f"non-integer new final-XZ size in {method}: {row['id']}")
+        if not isinstance(raw_old, int) or isinstance(raw_old, bool):
+            raise RuntimeError(f"non-integer old final-XZ size in {method}: {row['id']}")
+        new_size = raw_new
+        old_size = raw_old
+        if new_size <= 0 or old_size <= 0:
+            raise RuntimeError(f"non-positive final-XZ size in {method}: {row['id']}")
+        if new_size < old_size:
+            verdict = "win"
+            wins += 1
+        elif new_size == old_size:
+            verdict = "tie"
+            ties += 1
+        else:
+            verdict = "loss"
+            losses += 1
+        comparisons.append(
+            {"sample": row["id"], "old_final_xz": old_size, "new_final_xz": new_size, "verdict": verdict}
+        )
+    total = wins + ties + losses
+    majority_pass = wins * 2 > total
+    return {
+        "size_wins": wins,
+        "size_ties": ties,
+        "size_losses": losses,
+        "size_win_fraction": f"{wins / total:.12f}",
+        "majority_size_pass": majority_pass,
+        "comparisons": comparisons,
+    }
+
+
 def summarize_methods(
     per_method: dict[str, list[dict[str, object]]],
+    *,
+    expected_ids: tuple[str, ...] = POLICY_FIXED_SAMPLE_IDS,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
     summaries: dict[str, object] = {}
     failures: list[dict[str, object]] = []
     for method in METHODS:
         rows = per_method[method]
+        # Active policy is defined only over the frozen fixed 12-sample
+        # population; validate it before computing any PASS.
+        row_ids = [row["id"] for row in rows]
+        if len(row_ids) != len(expected_ids) or len(set(row_ids)) != len(row_ids) or set(row_ids) != set(expected_ids):
+            raise RuntimeError(
+                f"{method} population is not the fixed {len(expected_ids)}-sample policy set"
+            )
         positive = [row for row in rows if row["old"]["covered"] > 0]
         if not positive:
             raise RuntimeError(f"empty positive-coverage population for {method}")
@@ -961,19 +1319,29 @@ def summarize_methods(
         size_gm = geometric_mean(size_ratios)
         worst_coverage = min(zip(coverage_ratios, positive), key=lambda item: item[0])
         worst_size = max(zip(raw_sizes, rows), key=lambda item: item[0])
+        majority = majority_size_verdict(method, rows)
+        coverage_pass = coverage_gm >= COVERAGE_GEOMEAN_THRESHOLD
         summary = {
             "positive_population": len(positive),
             "representative_population": len(rows),
             "coverage_geomean": f"{coverage_gm:.12f}",
+            "coverage_pass": coverage_pass,
+            # Active versioned size gate: strict majority of final-XZ wins.
+            "size_wins": majority["size_wins"],
+            "size_ties": majority["size_ties"],
+            "size_losses": majority["size_losses"],
+            "size_win_fraction": majority["size_win_fraction"],
+            "majority_size_pass": majority["majority_size_pass"],
+            "majority_comparisons": majority["comparisons"],
+            # Legacy/diagnostic metrics and booleans, retained but NOT gates.
             "size_geomean": f"{size_gm:.12f}",
             "worst_coverage": {"sample": worst_coverage[1]["id"], "ratio": f"{worst_coverage[0]:.12f}"},
             "worst_size": {"sample": worst_size[1]["id"], "ratio": f"{worst_size[0]:.12f}"},
-            "coverage_pass": coverage_gm >= 0.95,
-            "size_pass": size_gm <= 1.05,
-            "raw_size_pass": all(value <= 1.10 for value in raw_sizes),
+            "legacy_size_geomean_pass": size_gm <= LEGACY_SIZE_GEOMEAN_MAX,
+            "legacy_raw_size_pass": all(value <= LEGACY_RAW_SIZE_MAX for value in raw_sizes),
         }
         summaries[method] = summary
-        if not summary["coverage_pass"] or not summary["size_pass"] or not summary["raw_size_pass"]:
+        if not coverage_pass or not majority["majority_size_pass"]:
             failures.append({"method": method, "summary": summary})
     return summaries, failures
 
@@ -1037,6 +1405,197 @@ def _safe_file_sha256(path: Path) -> str | None:
         return None
 
 
+class IdentityUnavailableError(RuntimeError):
+    """The evaluation binary's immutable identity could not be established.
+
+    Carries the dedicated `identity-probe` entry (argv/stdout/stderr/
+    termination) and, when the hash was readable, the partial SHA so a durable
+    partial report can record `available:false` without losing evidence.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        probe: dict[str, object] | None = None,
+        *,
+        sha: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.probe = probe
+        self.sha = sha
+
+
+class BinaryReplacedError(RuntimeError):
+    """The evaluation binary changed on disk after its identity was captured."""
+
+
+def _capture_binary_identity(
+    binary: Path, *, timeout: float | None
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Capture the binary identity ONCE, before any row executes.
+
+    Returns `(identity, probe_entry)`.  The `--version` probe uses the same
+    timeout policy as every other command (numeric seconds, or explicit
+    `none`), so a hanging binary is bounded and its process group is cleaned
+    up by `run_command`.  The probe entry is a dedicated report record, kept
+    separate from per-row commands (the row loop clears `_COMMAND_LOG`), and
+    retains argv/stdout/stderr/returncode/timeout/termination plus the actual
+    available identity.  A hash or version that cannot be read is reported as
+    unavailable/partial, never as a passing identity; a timeout still returns
+    the captured partial SHA with `available:false`/`version:none` and the
+    probe entry, and raises so the caller persists a durable partial report.
+    """
+    sha = _safe_file_sha256(binary)
+    version_command = [os.fspath(binary), "--version"]
+    if sha is None:
+        probe = _timeout_or_failure_probe(version_command, termination="hash-unavailable")
+        raise IdentityUnavailableError(
+            f"binary hash unavailable: {binary}", probe
+        )
+    try:
+        result = run_command(
+            version_command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except CommandTimeoutError as error:
+        probe = {
+            "stage": "identity-probe",
+            "argv": list(version_command),
+            "exit_code": None,
+            "stdout": _decode_captured(error.captured_stdout),
+            "stderr": _decode_captured(error.captured_stderr),
+            "termination": "timeout",
+            "error": str(error),
+        }
+        raise IdentityUnavailableError(
+            f"binary --version timed out: {binary}", probe, sha=sha
+        ) from error
+    except OSError as error:
+        probe = {
+            "stage": "identity-probe",
+            "argv": list(version_command),
+            "exit_code": None,
+            "stdout": "",
+            "stderr": "",
+            "termination": "os-error",
+            "error": str(error),
+        }
+        raise IdentityUnavailableError(
+            f"binary version unavailable: {binary}: {error}", probe, sha=sha
+        ) from error
+    probe = {
+        "stage": "identity-probe",
+        "argv": list(version_command),
+        "exit_code": result.returncode,
+        "stdout": _decode_captured(result.stdout),
+        "stderr": _decode_captured(result.stderr),
+        "termination": "exit" if result.returncode == 0 else "nonzero",
+    }
+    if result.returncode != 0:
+        raise IdentityUnavailableError(
+            f"binary --version exited {result.returncode}: {binary}", probe, sha=sha
+        )
+    version = (result.stdout or "").strip()
+    if not version:
+        raise IdentityUnavailableError(
+            f"binary --version produced no output: {binary}", probe, sha=sha
+        )
+    return {
+        "path": os.fspath(binary),
+        "sha256": sha,
+        "version": version,
+    }, probe
+
+
+def _timeout_or_failure_probe(command: list[str], *, termination: str) -> dict[str, object]:
+    return {
+        "stage": "identity-probe",
+        "argv": list(command),
+        "exit_code": None,
+        "stdout": "",
+        "stderr": "",
+        "termination": termination,
+    }
+
+
+def _decode_captured(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _recheck_binary_identity(binary: Path, identity: dict[str, object]) -> None:
+    """Detect an ordinary on-disk binary replacement/hash change/unavailability.
+
+    This is a cooperative pre/early safety check between rows and before final
+    acceptance; it is not a guarantee against a same-user hostile
+    mutate-and-restore race.
+    """
+    current = _safe_file_sha256(binary)
+    if current is None:
+        raise IdentityUnavailableError(f"binary became unreadable: {binary}")
+    if current != identity.get("sha256"):
+        raise BinaryReplacedError(
+            f"binary changed on disk: expected {identity.get('sha256')} got {current}"
+        )
+
+
+def _binary_identity_block(
+    binary: Path | None,
+    identity: dict[str, object] | None,
+    *,
+    available: bool = True,
+    sha_override: str | None = None,
+) -> dict[str, object]:
+    """Report block serialization: the immutable initial identity or partial.
+
+    Serialization performs no subprocess spawn and no re-derivation: a captured
+    identity is returned verbatim; otherwise the block is explicitly
+    `available:false` with `version:none` (plus a captured partial SHA when one
+    was readable) so a partial identity can never read as a pass.
+    """
+    if identity is not None:
+        block = dict(identity)
+        block["available"] = available
+        return block
+    if binary is None:
+        return {"path": None, "sha256": None, "version": None, "available": False}
+    return {
+        "path": os.fspath(binary),
+        "sha256": sha_override,
+        "version": None,
+        "available": False,
+    }
+
+
+#: Binary built-in defaults (src/config.rs), recorded for the
+#: configured-vs-default distinction.  These are descriptive, not enforced
+#: here; the srep CLI validates any configured override.
+DEFAULT_MEMORY_BYTES = 256 * 1024 * 1024
+DEFAULT_TEMP_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
+
+
+def _resource_report(resource: dict[str, str | None]) -> dict[str, object]:
+    return {
+        "memory": resource.get("memory"),
+        "temp_dir": resource.get("temp_dir"),
+        "temp_limit": resource.get("temp_limit"),
+        "configured": {
+            name: resource.get(name) is not None
+            for name in ("memory", "temp_dir", "temp_limit")
+        },
+        "defaults": {
+            "memory_bytes": DEFAULT_MEMORY_BYTES,
+            "temp_limit_bytes": DEFAULT_TEMP_LIMIT_BYTES,
+        },
+    }
+
+
 def _evaluation_report(
     *,
     binary: Path | None,
@@ -1047,14 +1606,44 @@ def _evaluation_report(
     passed: bool,
     complete: bool,
     error: dict[str, object] | None = None,
+    resource: dict[str, str | None] | None = None,
+    identity: dict[str, object] | None = None,
+    identity_probe: dict[str, object] | None = None,
+    identity_available: bool = True,
+    identity_sha_override: str | None = None,
 ) -> dict[str, object]:
     report: dict[str, object] = {
         "schema": "srep-fidelity-report-v1",
+        # Versioned quality gate this report was evaluated under. Old reports
+        # without this id are legacy-schema and remain immutable as-is.
+        "quality_policy": {
+            "id": QUALITY_POLICY_ID,
+            "criteria": {
+                "complete_rows": True,
+                "roundtrip_required": True,
+                "coverage_geomean_min": COVERAGE_GEOMEAN_THRESHOLD,
+                "size": "per-method strict majority of complete fixed rows with final-XZ new < old (ties do not win); wins*2 > rows",
+                "legacy_diagnostics": {
+                    "size_geomean_max": LEGACY_SIZE_GEOMEAN_MAX,
+                    "raw_size_max": LEGACY_RAW_SIZE_MAX,
+                    "note": "diagnostic only, not active gates",
+                },
+            },
+        },
         "corpus_manifest_sha256": _safe_file_sha256(CORPUS_MANIFEST),
         "baseline_manifest_sha256": _safe_file_sha256(BASELINE_MANIFEST),
         "binary": os.fspath(binary) if binary is not None else None,
+        # The immutable identity captured once before the first row; it is
+        # never re-derived or relabelled from later on-disk state.
+        "binary_identity": _binary_identity_block(
+            binary, identity, available=identity_available, sha_override=identity_sha_override
+        ),
+        "resource": _resource_report(resource or {}),
         "xz_version": None if baseline_data is None else baseline_data.get("xz_version"),
         "xz_argv": None if baseline_data is None else baseline_data.get("xz_argv"),
+        # Dedicated identity probe transcript, kept separate from per-row
+        # commands (the row loop clears _COMMAND_LOG).
+        "identity_probe": identity_probe,
         "samples": report_samples,
         "methods": summaries or {},
         "failures": failures,
@@ -1074,26 +1663,74 @@ def _error_payload(
     current: dict[str, object], error: BaseException
 ) -> dict[str, object]:
     command = current.get("command")
+    commands = current.get("commands")
     return {
         "sample": current.get("sample"),
         "method": current.get("method"),
         "stage": current.get("stage"),
         "command": list(command) if command is not None else None,
+        "commands": list(commands) if isinstance(commands, list) else [],
+        "identity_context": current.get("identity_context"),
+        "returncode": getattr(error, "returncode", None),
         "error": str(error),
     }
 
 
+def _run_stage(
+    command: list[str], *, timeout: float | None
+) -> subprocess.CompletedProcess:
+    """Run one srep stage, retain its output, and surface nonzero exits.
+
+    A timeout is logged with whatever stdout/stderr was captured before the
+    kill plus the termination outcome, then re-raised so the durable report
+    keeps a complete transcript for that stage.
+    """
+    try:
+        result = run_command(command, check=False, capture_output=True, timeout=timeout)
+    except CommandTimeoutError as error:
+        _COMMAND_LOG.record_extra(
+            command_stage(command),
+            command,
+            stdout=error.captured_stdout,
+            stderr=error.captured_stderr,
+            exit_code=None,
+            termination="timeout",
+            error=str(error),
+        )
+        raise
+    _COMMAND_LOG.record(command_stage(command), result)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode, command, output=result.stdout, stderr=result.stderr
+        )
+    return result
+
+
+def command_stage(command: list[str]) -> str:
+    return command[1] if len(command) > 1 else "command"
+
+
 def evaluate(args: argparse.Namespace) -> int:
     timeout = getattr(args, "command_timeout", DEFAULT_COMMAND_TIMEOUT)
+    resource: dict[str, str | None] = {
+        "memory": getattr(args, "memory", None),
+        "temp_dir": getattr(args, "temp_dir", None),
+        "temp_limit": getattr(args, "temp_limit", None),
+    }
     output: Path | None = args.report
     binary: Path | None = None
     baseline_data: dict[str, object] | None = None
+    identity: dict[str, object] | None = None
+    identity_probe: dict[str, object] | None = None
+    identity_available = False
+    identity_sha_override: str | None = None
     report_samples: list[dict[str, object]] = []
     current: dict[str, object] = {
         "sample": None,
         "method": None,
         "stage": "validate",
         "command": None,
+        "commands": [],
     }
     try:
         corpus = ensure_corpus_manifest()
@@ -1103,6 +1740,14 @@ def evaluate(args: argparse.Namespace) -> int:
         directory = retained_directory("srep-fidelity-evaluate")
         if output is None:
             output = directory / "fidelity-report.json"
+        # Capture the immutable binary identity ONCE, before any row runs.
+        # The version probe obeys the configured timeout policy, so a hang is
+        # bounded and its process group is cleaned up.  A failure here still
+        # persists a partial, non-passing report (identity unavailable).
+        current["stage"] = "identity"
+        identity, identity_probe = _capture_binary_identity(binary, timeout=timeout)
+        identity_available = True
+        current["stage"] = "sample"
         paths = write_corpus(directory, corpus)
         per_method: dict[str, list[dict[str, object]]] = {method: [] for method in METHODS}
         sample_count = len(corpus["samples"])
@@ -1118,18 +1763,38 @@ def evaluate(args: argparse.Namespace) -> int:
             _emit_progress(f"evaluate: sample {sample_id} ({sample_index}/{sample_count})")
             old_rows = next(item["methods"] for item in baseline_data["samples"] if item["id"] == sample_id)
             new_rows: dict[str, object] = {}
+            command_log: dict[str, list[dict[str, object]]] = {}
             for method in METHODS:
                 current["method"] = method
                 row_index = completed_rows + 1
                 archive = directory / f"{sample_id}-{method}.srep"
                 source = paths[sample_id]
-                compress_command = new_argv(binary, method, source, archive)
+                # Ordinary on-disk replacement/hash-change/unavailability is
+                # detected before starting the next row.  Not a hostile
+                # mutate/restore race guarantee.  Label this check explicitly
+                # so a failure's stage/context are the identity check, not the
+                # previous row's last command argv.
+                current["stage"] = "identity-recheck"
+                current["command"] = None
+                current["identity_context"] = {
+                    "phase": "row",
+                    "sample": sample_id,
+                    "method": method,
+                    "row_index": row_index,
+                    "expected_sha256": identity.get("sha256"),
+                }
+                # On failure the context stays populated for the error report;
+                # on success it is cleared before the row's first command.
+                _recheck_binary_identity(binary, identity)
+                current["identity_context"] = None
+                _COMMAND_LOG.clear()
+                compress_command = new_argv(binary, method, source, archive, resource=resource)
                 current["stage"] = "compress"
                 current["command"] = compress_command
                 _emit_progress(
                     f"evaluate: sample {sample_id} method {method} ({row_index}/{row_count}) stage compress"
                 )
-                run_command(compress_command, check=True, capture_output=True, timeout=timeout)
+                _run_stage(compress_command, timeout=timeout)
 
                 info_command = [os.fspath(binary), "info", os.fspath(archive)]
                 current["stage"] = "info"
@@ -1140,26 +1805,21 @@ def evaluate(args: argparse.Namespace) -> int:
                 info = run_info(binary, archive, timeout=timeout)
 
                 restored = directory / f"{archive.stem}.restored"
-                test_command = [os.fspath(binary), "test", os.fspath(archive)]
                 current["stage"] = "test"
+                test_command = [os.fspath(binary), "test", os.fspath(archive)]
                 current["command"] = test_command
                 _emit_progress(
                     f"evaluate: sample {sample_id} method {method} ({row_index}/{row_count}) stage test"
                 )
-                run_command(test_command, check=True, capture_output=True, timeout=timeout)
+                _run_stage(test_command, timeout=timeout)
 
-                decompress_command = [
-                    os.fspath(binary),
-                    "decompress",
-                    os.fspath(archive),
-                    os.fspath(restored),
-                ]
                 current["stage"] = "decompress"
+                decompress_command = decompress_argv(binary, archive, restored, resource=resource)
                 current["command"] = decompress_command
                 _emit_progress(
                     f"evaluate: sample {sample_id} method {method} ({row_index}/{row_count}) stage decompress"
                 )
-                run_command(decompress_command, check=True, capture_output=True, timeout=timeout)
+                _run_stage(decompress_command, timeout=timeout)
                 if restored.read_bytes() != source.read_bytes():
                     raise RuntimeError(f"round-trip mismatch for {archive.name}")
 
@@ -1174,6 +1834,7 @@ def evaluate(args: argparse.Namespace) -> int:
                     raise RuntimeError("xz version changed during evaluation")
                 row = metrics(info, archive.stat().st_size, final_size)
                 new_rows[method] = row
+                command_log[method] = _COMMAND_LOG.drain()
                 old = old_rows[method]
                 per_method[method].append({
                     "id": sample_id,
@@ -1187,7 +1848,11 @@ def evaluate(args: argparse.Namespace) -> int:
                     "new": row,
                 })
                 completed_rows += 1
-                sample_entry = {"id": sample_id, "methods": dict(new_rows)}
+                sample_entry = {
+                    "id": sample_id,
+                    "methods": dict(new_rows),
+                    "commands": dict(command_log),
+                }
                 if report_samples and report_samples[-1]["id"] == sample_id:
                     report_samples[-1] = sample_entry
                 else:
@@ -1202,12 +1867,30 @@ def evaluate(args: argparse.Namespace) -> int:
                         failures=[],
                         passed=False,
                         complete=False,
+                        resource=resource,
+                        identity=identity,
+                        identity_probe=identity_probe,
+                        identity_available=identity_available,
                     ),
                 )
 
         if completed_rows != row_count:
             raise RuntimeError(f"evaluation produced {completed_rows} rows; {row_count} required")
 
+        # Final acceptance: confirm the binary is still the captured identity
+        # before reporting a complete pass.  Completed rows stay under the
+        # ORIGINAL identity if this fails.  Label this as an explicit final
+        # check so its failure context is not a stale last-row command.
+        current["stage"] = "identity-final-check"
+        current["command"] = None
+        current["identity_context"] = {
+            "phase": "final",
+            "completed_rows": completed_rows,
+            "expected_sha256": identity.get("sha256"),
+        }
+        # On failure the context stays populated for the error report; on
+        # success the final check completed and no further stage follows.
+        _recheck_binary_identity(binary, identity)
         summaries, failures = summarize_methods(per_method)
 
         report = _evaluation_report(
@@ -1218,13 +1901,26 @@ def evaluate(args: argparse.Namespace) -> int:
             failures=failures,
             passed=not failures,
             complete=True,
+            resource=resource,
+            identity=identity,
+            identity_probe=identity_probe,
+            identity_available=identity_available,
         )
         _persist_report(output, report)
         print(f"retained evaluation work: {directory}")
         print(f"report: {output}")
+        print(f"quality policy: {QUALITY_POLICY_ID} (per-method strict majority, final-XZ new < old)")
         for method in METHODS:
             summary = summaries[method]
-            print(f"{method}: coverage geomean {summary['coverage_geomean']} ({summary['positive_population']} positive), size geomean {summary['size_geomean']}, worst raw size {summary['worst_size']['ratio']}")
+            print(
+                f"{method}: wins {summary['size_wins']}/12, ties {summary['size_ties']}, "
+                f"losses {summary['size_losses']} "
+                f"(majority_size_pass={summary['majority_size_pass']}); "
+                f"coverage geomean {summary['coverage_geomean']} "
+                f"({summary['positive_population']} positive), "
+                f"diagnostic size geomean {summary['size_geomean']}, "
+                f"diagnostic worst raw size {summary['worst_size']['ratio']}"
+            )
         if failures:
             print("FIDELITY GATE: FAIL", file=sys.stderr)
             for failure in failures:
@@ -1234,6 +1930,17 @@ def evaluate(args: argparse.Namespace) -> int:
         return 0
     except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as error:
         if output is not None:
+            # Retain every command transcript from the failed row, including
+            # the failing command's stderr/stdout, before recording the error.
+            current["commands"] = _COMMAND_LOG.drain()
+            # An identity-probe failure carries its own dedicated entry and any
+            # partial SHA; merge them so a durable partial report keeps the
+            # probe even though no row ran.
+            if isinstance(error, IdentityUnavailableError):
+                if error.probe is not None:
+                    identity_probe = error.probe
+                if error.sha is not None:
+                    identity_sha_override = error.sha
             payload = _error_payload(current, error)
             try:
                 _persist_report(
@@ -1247,6 +1954,11 @@ def evaluate(args: argparse.Namespace) -> int:
                         passed=False,
                         complete=False,
                         error=payload,
+                        resource=resource,
+                        identity=identity,
+                        identity_probe=identity_probe,
+                        identity_available=identity_available,
+                        identity_sha_override=identity_sha_override,
                     ),
                 )
             except OSError:
@@ -1267,10 +1979,31 @@ def main() -> int:
     evaluate_parser.add_argument("--report", type=Path)
     evaluate_parser.add_argument(
         "--command-timeout",
-        type=_positive_seconds,
+        type=_command_timeout,
         default=DEFAULT_COMMAND_TIMEOUT,
         metavar="SECONDS",
-        help="positive seconds allowed for each evaluation command (default: 180)",
+        help="positive seconds per evaluation command, or 'none' for no timeout (default: 180)",
+    )
+    # Resource-only passthrough for compress/decompress (the binary validates
+    # the values and its errors propagate as ordinary nonzero commands).  Left
+    # unset, no resource flag is emitted and the binary keeps its defaults.
+    evaluate_parser.add_argument(
+        "--memory",
+        default=None,
+        metavar="SIZE",
+        help="optional srep --memory SIZE passed to compress/decompress (default: binary default)",
+    )
+    evaluate_parser.add_argument(
+        "--temp-dir",
+        default=None,
+        metavar="PATH",
+        help="optional srep --temp-dir PATH passed to compress/decompress (default: binary default/temp env)",
+    )
+    evaluate_parser.add_argument(
+        "--temp-limit",
+        default=None,
+        metavar="SIZE",
+        help="optional srep --temp-limit SIZE passed to compress/decompress (default: 4GiB)",
     )
     subparsers.add_parser("self-test")
     args = parser.parse_args()

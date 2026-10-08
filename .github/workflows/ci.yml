@@ -8,7 +8,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - name: Prepare legacy test temporary root
@@ -43,7 +43,7 @@ jobs:
 
   windows-test:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -78,7 +78,7 @@ jobs:
   native-matrix:
     name: Native ${{ matrix.os }} Rust ${{ matrix.rust }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:

@@ -99,6 +99,7 @@ pub(crate) struct CopyPermit {
 }
 
 impl CopyPermit {
+    #[cfg(test)]
     pub(crate) fn remaining_io(&self) -> u128 {
         self.io.remaining()
     }
@@ -310,7 +311,9 @@ pub fn compress_with_candidates<
     config: &CompressionConfig,
     candidates: I,
 ) -> Result<CompressionStats> {
-    crate::v3::writer::compress_with_candidates(input, output, config, candidates)
+    config.validate()?;
+    let context = ResourceContext::with_resources(&config.resources)?;
+    compress_with_candidates_with_context(input, output, config, candidates, &context)
 }
 
 pub fn compress_with_candidates_with_context<
@@ -324,9 +327,13 @@ pub fn compress_with_candidates_with_context<
     candidates: I,
     context: &ResourceContext,
 ) -> Result<CompressionStats> {
-    crate::v3::writer::compress_with_candidates_with_context(
-        input, output, config, candidates, context,
-    )
+    config.validate()?;
+    let session = CompressionSession::new(
+        context,
+        &config.resources,
+        crate::offload::session::OffloadPolicy::default(),
+    )?;
+    compress_in_session(input, output, config, &session, Some(candidates))
 }
 
 pub fn compress_with_context<R: Read, W: Write>(
@@ -336,41 +343,116 @@ pub fn compress_with_context<R: Read, W: Write>(
     context: &ResourceContext,
 ) -> Result<CompressionStats> {
     config.validate()?;
-    let spool = spool_input(input, &config.resources, context)?;
-    let candidates = match config.method {
-        Method::M0Rep => crate::match_finder::m0::find_matches_m0_spooled(&spool, config, context)?,
-        Method::M1RollingCdc => crate::match_finder::cdc::find_matches_spooled(
-            &spool,
-            config,
-            context,
-            crate::match_finder::cdc::CdcMethod::M1,
-        )?,
-        Method::M2Order1Cdc => crate::match_finder::cdc::find_matches_spooled(
-            &spool,
-            config,
-            context,
-            crate::match_finder::cdc::CdcMethod::M2,
-        )?,
-        Method::M3FixedDigest | Method::M4Reread => {
-            let candidates = crate::match_finder::fixed::find_matches_spooled_for_normalization(
-                &spool,
-                config,
-                context,
-                config.method,
-            )?;
-            return crate::v3::writer::compress_spooled_with_candidates(
-                spool, config, candidates, context, output,
-            );
-        }
-        Method::M5Exhaustive => {
-            let candidates =
-                crate::match_finder::m5::find_matches_spooled(&spool, config, context)?;
-            return crate::v3::writer::compress_spooled_with_candidates(
-                spool, config, candidates, context, output,
-            );
-        }
+    let session = CompressionSession::new(
+        context,
+        &config.resources,
+        crate::offload::session::OffloadPolicy::default(),
+    )?;
+    compress_in_session(
+        input,
+        output,
+        config,
+        &session,
+        None::<std::iter::Empty<crate::match_ir::MatchCandidate>>,
+    )
+}
+
+/// Single private implementation used by public compression and whitebox tests.
+pub(crate) fn compress_in_session<
+    R: Read,
+    W: Write,
+    I: IntoIterator<Item = crate::match_ir::MatchCandidate>,
+>(
+    input: R,
+    mut output: W,
+    config: &CompressionConfig,
+    session: &CompressionSession,
+    candidates: Option<I>,
+) -> Result<CompressionStats> {
+    use crate::offload::contracts::{
+        CandidateRow, CandidateRunSink, CandidateSink, Provenance, Scheduler,
     };
-    crate::v3::writer::compress_spooled_with_candidates(spool, config, candidates, context, output)
+    let result = (|| {
+        config.validate()?;
+        let spool = spool_input_in_session(input, session)?;
+        session.profile(
+            "spooled",
+            format_args!("input={} method={:?}", spool.len, config.method),
+        );
+        let minimum = config.effective_min_match()?;
+        let selected = if candidates.is_none() && config.method == Method::M3FixedDigest {
+            let input = crate::offload::prepare_m3_schedule_input(&spool, config, session)?;
+            session.finish_generation()?;
+            let builder =
+                crate::offload::matches::DiskSelectedBuilder::new(spool.len, minimum, session)?;
+            crate::offload::schedule::DiskScheduler::new(builder)
+                .schedule_prepared(input, session)?
+        } else {
+            let batch = if let Some(candidates) = candidates {
+                let mut sink =
+                    crate::offload::candidate_sink::ExternalCandidateSink::with_input_len(
+                        session,
+                        spool.len,
+                        usize::MAX,
+                    )?;
+                for candidate in candidates {
+                    sink.emit(CandidateRow {
+                        candidate,
+                        provenance: Provenance::EXTERNAL,
+                    })?;
+                }
+                crate::offload::normalize::CandidateBatch::from_external(
+                    sink.finish()?,
+                    spool.len,
+                    session,
+                )?
+            } else {
+                crate::offload::generate_batch(&spool, config, session)?
+            };
+            session.finish_generation()?;
+            session.profile("generation_done", format_args!(""));
+            let validated =
+                crate::offload::normalize::validate_batch(batch, &spool, minimum, session)?;
+            let builder =
+                crate::offload::matches::DiskSelectedBuilder::new(spool.len, minimum, session)?;
+            crate::offload::schedule::DiskScheduler::new(builder).schedule(validated, session)?
+        };
+        session.profile(
+            "schedule_done",
+            format_args!(
+                "K={}",
+                crate::offload::contracts::ReplayStore::len(&selected)
+            ),
+        );
+        let (mut staged, stats) =
+            crate::v3::writer::stage_selected(&spool, config, &selected, session)?;
+        drop(selected);
+        // `stage_selected` has consumed the last read of the original input
+        // and produced a self-consistent archive.  A final uncached barrier is
+        // still required before dropping the input owner: a persistent
+        // mutation during staging must not be able to publish an archive whose
+        // own checksum is internally consistent but no longer represents the
+        // caller's original bytes.  This uses the existing shared I/O ledger
+        // and workspace, and cleanup runs on every failure.  Mutate-and-restore
+        // races remain outside this integrity model.
+        #[cfg(test)]
+        test_mutate_input_after_staging(&spool)?;
+        spool.verify_identity(session)?;
+        drop(spool);
+        session.retry_cleanup()?;
+        let permit = prepare_publication(&mut staged, session)?;
+        copy_staged_exact(&mut staged, &mut output, permit, session)?;
+        drop(staged);
+        session.retry_cleanup()?;
+        Ok(stats)
+    })();
+    if result.is_err()
+        && let Err(cleanup) = session.retry_cleanup()
+    {
+        eprintln!("{cleanup}");
+    }
+    session.profile("complete", format_args!("ok={}", result.is_ok()));
+    result
 }
 
 pub fn decompress<R: Read, W: Write>(input: R, output: W) -> Result<CompressionStats> {
@@ -576,10 +658,190 @@ fn validate_resources(resources: &ResourceConfig) -> Result<()> {
 }
 
 pub(crate) struct InputSpool {
-    pub(crate) file: File,
-    pub(crate) _temp: NamedTempFile,
-    pub(crate) len: u64,
-    pub(crate) _reservation: Reservation,
+    storage: TempSpool,
+    identity: InputIdentity,
+    owner: Option<SessionId>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct InputIdentity {
+    len: u64,
+    digest: [u8; 32],
+}
+#[cfg(test)]
+thread_local! {
+    static MUTATE_INPUT_AFTER_STAGING: std::cell::Cell<Option<u8>> = const { std::cell::Cell::new(None) };
+    static MUTATE_INPUT_DURING_STAGING: std::cell::Cell<Option<u8>> = const { std::cell::Cell::new(None) };
+}
+#[cfg(test)]
+pub(crate) fn test_mutate_input_after_staging(spool: &InputSpool) -> Result<()> {
+    let mode = MUTATE_INPUT_AFTER_STAGING.with(std::cell::Cell::get);
+    match mode {
+        Some(1) => {
+            let mut file = spool._temp.reopen().map_err(Error::temp_storage)?;
+            file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
+            file.write_all(&[0xA5]).map_err(Error::temp_storage)?;
+            file.flush().map_err(Error::temp_storage)?;
+        }
+        Some(2) => {
+            let file = spool._temp.reopen().map_err(Error::temp_storage)?;
+            file.set_len(spool.len.saturating_sub(1))
+                .map_err(Error::temp_storage)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+#[cfg(test)]
+pub(crate) fn test_mutate_input_during_staging(spool: &InputSpool) -> Result<()> {
+    let mode = MUTATE_INPUT_DURING_STAGING.with(|v| {
+        let mode = v.get();
+        if mode.is_some() {
+            v.set(None);
+        }
+        mode
+    });
+    match mode {
+        Some(3) => {
+            let mut file = spool._temp.reopen().map_err(Error::temp_storage)?;
+            file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
+            file.write_all(&[0x5A]).map_err(Error::temp_storage)?;
+            file.flush().map_err(Error::temp_storage)?;
+        }
+        Some(4) => {
+            let file = spool._temp.reopen().map_err(Error::temp_storage)?;
+            file.set_len(spool.len.saturating_sub(1))
+                .map_err(Error::temp_storage)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+fn input_hasher() -> blake3::Hasher {
+    let mut h = blake3::Hasher::new();
+    h.update(b"SREP-OFF-INPUT-v1\0");
+    h
+}
+fn finish_input_hash(mut h: blake3::Hasher, len: u64) -> InputIdentity {
+    h.update(&len.to_le_bytes());
+    InputIdentity {
+        len,
+        digest: *h.finalize().as_bytes(),
+    }
+}
+impl InputIdentity {
+    pub(crate) fn encode(self) -> [u8; 40] {
+        let mut b = [0; 40];
+        b[..8].copy_from_slice(&self.len.to_le_bytes());
+        b[8..].copy_from_slice(&self.digest);
+        b
+    }
+    pub(crate) fn check_bytes(self, bytes: &[u8]) -> Result<()> {
+        let mut h = input_hasher();
+        h.update(bytes);
+        if self != finish_input_hash(h, bytes.len() as u64) {
+            return Err(Error::checksum_mismatch("input spool identity changed"));
+        }
+        Ok(())
+    }
+}
+impl InputSpool {
+    pub(crate) fn input_identity(&self) -> InputIdentity {
+        self.identity
+    }
+    pub(crate) fn verify_identity(&self, session: &CompressionSession) -> Result<()> {
+        self.check_owner(session)?;
+        let _handle = session.acquire_handles(1)?;
+        session.checkpoint(Operation::Open)?;
+        let mut file = self._temp.reopen().map_err(Error::temp_storage)?;
+        if self.len != self.identity.len
+            || file.metadata().map_err(Error::temp_storage)?.len() != self.identity.len
+        {
+            return Err(Error::checksum_mismatch("input spool identity changed"));
+        }
+        let mut buffer = session.workspace(WorkspaceKind::Publication)?;
+        let mut permit = session.reserve_io(self.identity.len as u128)?;
+        let mut remaining = self.identity.len;
+        let mut hash = input_hasher();
+        while remaining > 0 {
+            session.checkpoint(Operation::Read)?;
+            let n = remaining.min(buffer.len() as u64) as usize;
+            let got = match file.read(&mut buffer[..n]) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                r => r.map_err(Error::input_io)?,
+            };
+            if got == 0 {
+                return Err(Error::checksum_mismatch("input spool identity changed"));
+            }
+            permit.consume(got as u64)?;
+            hash.update(&buffer[..got]);
+            remaining -= got as u64;
+        }
+        if file.metadata().map_err(Error::temp_storage)?.len() != self.identity.len
+            || finish_input_hash(hash, self.identity.len) != self.identity
+        {
+            return Err(Error::checksum_mismatch("input spool identity changed"));
+        }
+        Ok(())
+    }
+    pub(crate) fn check_owner(&self, session: &CompressionSession) -> Result<()> {
+        if self.owner.is_some_and(|owner| owner != session.identity()) {
+            return Err(Error::corrupt_index("cross-session input spool"));
+        }
+        Ok(())
+    }
+}
+impl std::ops::Deref for InputSpool {
+    type Target = TempSpool;
+    fn deref(&self) -> &TempSpool {
+        &self.storage
+    }
+}
+#[cfg(test)]
+impl std::ops::DerefMut for InputSpool {
+    fn deref_mut(&mut self) -> &mut TempSpool {
+        &mut self.storage
+    }
+}
+
+fn spool_input_in_session<R: Read>(
+    mut input: R,
+    session: &CompressionSession,
+) -> Result<InputSpool> {
+    let mut storage = TempSpool::new_in_session(session)?;
+    let mut buffer = session.workspace(WorkspaceKind::Publication)?;
+    let mut hash = input_hasher();
+    loop {
+        session.check_cancelled()?;
+        let mut permit = session.reserve_io(buffer.len() as u128)?;
+        let n = match input.read(&mut buffer) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            r => r.map_err(Error::input_io)?,
+        };
+        permit.consume(n as u64)?;
+        drop(permit);
+        if n == 0 {
+            break;
+        }
+        let end = storage
+            .len
+            .checked_add(n as u64)
+            .filter(|n| {
+                *n <= session.resources().output_limit && *n <= crate::config::MAX_UNCOMPRESSED
+            })
+            .ok_or_else(|| Error::output_limit("input exceeds wire size limit"))?;
+        storage.append(&buffer[..n])?;
+        hash.update(&buffer[..n]);
+        debug_assert_eq!(storage.len, end);
+    }
+    session.checkpoint(Operation::Flush)?;
+    storage.file.flush().map_err(Error::temp_storage)?;
+    storage.rewind()?;
+    let identity = finish_input_hash(hash, storage.len);
+    Ok(InputSpool {
+        storage,
+        identity,
+        owner: Some(session.identity()),
+    })
 }
 
 pub(crate) fn spool_input<R: Read>(
@@ -596,6 +858,7 @@ pub(crate) fn spool_input<R: Read>(
     let mut buf = [0u8; 64 * 1024];
     let mut len = 0u64;
     let mut reservation = context.temp.reserve(0)?;
+    let mut hash = input_hasher();
     loop {
         let n = input.read(&mut buf).map_err(Error::input_io)?;
         if n == 0 {
@@ -614,14 +877,26 @@ pub(crate) fn spool_input<R: Read>(
             return Err(Error::temp_storage(error));
         }
         len = new_len;
+        hash.update(&buf[..n]);
     }
     file.flush().map_err(Error::temp_storage)?;
     file.seek(SeekFrom::Start(0)).map_err(Error::temp_storage)?;
     Ok(InputSpool {
-        file,
-        _temp: temp,
-        len,
-        _reservation: reservation,
+        identity: finish_input_hash(hash, len),
+        owner: None,
+        storage: TempSpool {
+            file,
+            _temp: temp,
+            len,
+            reservation,
+            budget_error: None,
+            _session_leases: None,
+            _directory: None,
+            cleanup_control: None,
+            single_file_limit: u64::MAX,
+            session_io: None,
+            contaminated: false,
+        },
     })
 }
 
@@ -634,7 +909,8 @@ pub(crate) struct TempSpool {
     budget_error: Option<Error>,
     // Private offload constructor counts both NamedTempFile and reopened File.
     _session_leases: Option<(ResourceLease, ResourceLease)>,
-    _directory: Option<std::sync::Arc<tempfile::TempDir>>,
+    _directory: Option<std::sync::Arc<crate::offload::session::DirectoryOwner>>,
+    cleanup_control: Option<Reservation>,
     single_file_limit: u64,
     session_io: Option<SessionIo>,
     contaminated: bool,
@@ -681,6 +957,7 @@ impl TempSpool {
             budget_error: None,
             _session_leases: None,
             _directory: None,
+            cleanup_control: None,
             single_file_limit: u64::MAX,
             session_io: None,
             contaminated: false,
@@ -692,28 +969,48 @@ impl TempSpool {
         let file_slot = session.acquire_file_slot()?;
         let reservation = session.temp().reserve(0)?;
         let directory = session.directory_owner()?;
+        // Reserve fixed working control before creating the disabled-cleanup
+        // NamedTempFile. This covers the cleanup owner slot, its box header,
+        // and the allocator envelope, and is independent of path length:
+        // pathname bytes are excluded as file-pathname processing under the
+        // `--memory` contract. The path is transferred to the cleanup registry
+        // via keep() (no allocation) only if later open/cleanup fails.
+        let cleanup_control = session
+            .memory()
+            .reserve(crate::offload::session::file_path_control())?;
         session.checkpoint(Operation::Create)?;
         let mut builder = Builder::new();
         builder.prefix("staged-").disable_cleanup(true);
         let temp = temp_builder(builder)
             .tempfile_in(directory.path())
             .map_err(Error::temp_storage)?;
+        directory.verify_contains(temp.path())?;
         let opened = session
             .checkpoint(Operation::Open)
             .and_then(|_| temp.reopen().map_err(Error::temp_storage));
         let file = match opened {
             Ok(file) => file,
             Err(error) => {
-                let path = temp.path().to_path_buf();
-                drop(temp);
+                let (_, path) = temp.into_parts();
                 drop(handles);
+                // Borrow the path for the removal attempt; ownership moves
+                // into the deferred entry (via keep, with no allocation) only
+                // when removal fails. `temp` was already consumed by
+                // into_parts, so no clone coexists with a live owner.
                 if fs::remove_file(&path).is_err() {
-                    session.io_access().defer_cleanup(CleanupEntry {
-                        path,
-                        bytes: reservation,
-                        file: file_slot,
-                        directory,
-                    });
+                    let recovered: std::path::PathBuf = match path.keep() {
+                        Ok(owned) => owned,
+                        Err(failed) => failed.path.to_path_buf(),
+                    };
+                    session.io_access().defer_cleanup_with_metadata(
+                        CleanupEntry {
+                            path: recovered,
+                            bytes: reservation,
+                            file: file_slot,
+                            directory,
+                        },
+                        cleanup_control,
+                    );
                 }
                 return Err(error);
             }
@@ -726,6 +1023,7 @@ impl TempSpool {
             budget_error: None,
             _session_leases: Some((handles, file_slot)),
             _directory: Some(directory),
+            cleanup_control: Some(cleanup_control),
             single_file_limit: session.policy().max_file_bytes.min(session.temp().limit()),
             session_io: Some(session.io_access()),
             contaminated: false,
@@ -853,6 +1151,15 @@ impl Drop for TempSpool {
         // deferred cleanup, then normal field drops close both handles. Never
         // refund before remove/truncate is proven. NamedTempFile may itself
         // remove later; retry treats NotFound as proven cleanup.
+        //
+        // The steady state holds no owned cleanup-path clone. An owned path is
+        // materialized only on the removal-failure path; the pathname bytes are
+        // excluded from managed working memory as file-pathname processing,
+        // while the fixed cleanup-control reservation (admitted before the
+        // NamedTempFile was created) moves with the deferred entry so its
+        // working-state charge stays live until the file is verified removed.
+        // The disabled-cleanup NamedTempFile itself never removes on drop, so
+        // the deferred entry owns the only live path after this point.
         let removed = io
             .checkpoint(Operation::Remove)
             .and_then(|_| fs::remove_file(self._temp.path()).map_err(Error::temp_storage))
@@ -863,12 +1170,15 @@ impl Drop for TempSpool {
             // belong to the cleanup entry.
             self._session_leases = Some((handles, file.split(0).expect("zero split")));
             let bytes = std::mem::replace(&mut self.reservation, io.empty_temp_reservation());
-            io.defer_cleanup(CleanupEntry {
-                path: self._temp.path().to_path_buf(),
-                bytes,
-                file,
-                directory: self._directory.take().expect("session directory"),
-            });
+            io.defer_cleanup_with_metadata(
+                CleanupEntry {
+                    path: self._temp.path().to_path_buf(),
+                    bytes,
+                    file,
+                    directory: self._directory.take().expect("session directory"),
+                },
+                self.cleanup_control.take().expect("cleanup control"),
+            );
         }
     }
 }
@@ -926,6 +1236,265 @@ mod tests {
     use super::*;
     use crate::offload::session::{CompressionSession, IoLimit, OffloadPolicy};
     use std::fs::File;
+
+    struct InputMutationScope;
+    impl InputMutationScope {
+        fn new(mode: u8) -> Self {
+            MUTATE_INPUT_AFTER_STAGING.with(|v| v.set(Some(mode)));
+            MUTATE_INPUT_DURING_STAGING.with(|v| v.set((3..=4).contains(&mode).then_some(mode)));
+            Self
+        }
+    }
+    impl Drop for InputMutationScope {
+        fn drop(&mut self) {
+            MUTATE_INPUT_AFTER_STAGING.with(|v| v.set(None));
+            MUTATE_INPUT_DURING_STAGING.with(|v| v.set(None));
+        }
+    }
+
+    fn reference_candidates(
+        data: &[u8],
+        config: &CompressionConfig,
+    ) -> Vec<crate::match_ir::MatchCandidate> {
+        let c = ResourceContext::with_resources(&config.resources).unwrap();
+        let rows = match config.method {
+            Method::M0Rep => crate::find_matches_m0(data, config, &c),
+            Method::M1RollingCdc => crate::find_matches_m1(data, config, &c),
+            Method::M2Order1Cdc => crate::find_matches_m2(data, config, &c),
+            Method::M3FixedDigest => crate::find_matches_m3(data, config, &c),
+            Method::M4Reread => crate::find_matches_m4(data, config, &c),
+            Method::M5Exhaustive => crate::find_matches_m5(data, config, &c),
+        }
+        .unwrap();
+        rows.iter().copied().collect()
+    }
+    #[test]
+    fn integrated_production_generation_matches_independent_ram_writer_all_layouts() {
+        use crate::config::RepConfig;
+        for method in [
+            Method::M0Rep,
+            Method::M1RollingCdc,
+            Method::M2Order1Cdc,
+            Method::M3FixedDigest,
+            Method::M4Reread,
+            Method::M5Exhaustive,
+        ] {
+            let mut config = CompressionConfig::for_method(method);
+            config.min_match = 32;
+            config.block_size = 1024;
+            if matches!(method, Method::M3FixedDigest | Method::M4Reread) {
+                config.seed_size = Some(16);
+            }
+            if matches!(method, Method::M1RollingCdc | Method::M2Order1Cdc) {
+                config.target_chunk = Some(64);
+            }
+            if matches!(
+                method,
+                Method::M3FixedDigest | Method::M4Reread | Method::M5Exhaustive
+            ) {
+                config.rep_overlay = Some(RepConfig {
+                    distance: 512,
+                    min_match: 32,
+                });
+            }
+            let unit = (0..83)
+                .map(|n| ((n * 37 + 11) % 251) as u8)
+                .collect::<Vec<_>>();
+            let data = if matches!(method, Method::M1RollingCdc | Method::M2Order1Cdc) {
+                (0..1024)
+                    .map(|n| ((n * 71 + n / 29) % 251) as u8)
+                    .collect::<Vec<_>>()
+                    .repeat(2)
+            } else {
+                unit.repeat(3)
+            };
+            let candidates = reference_candidates(&data, &config);
+            for layout in [Layout::Index, Layout::Future, Layout::Io] {
+                for checksum in [Checksum::Xxh3, Checksum::Blake3] {
+                    config.layout = layout;
+                    config.checksum = checksum;
+                    let mut expected = Vec::new();
+                    let reference = crate::v3::writer::compress_reference(
+                        data.as_slice(),
+                        &mut expected,
+                        &config,
+                        candidates.iter().copied(),
+                    )
+                    .unwrap();
+                    let mut context = ResourceContext::with_resources(&config.resources).unwrap();
+                    context.candidate_index_memtable_bytes = Some(1);
+                    let session = CompressionSession::new(
+                        &context,
+                        &config.resources,
+                        OffloadPolicy {
+                            spill_mode: crate::offload::session::SpillMode::ForceSpill,
+                            ..OffloadPolicy::default()
+                        },
+                    )
+                    .unwrap();
+                    let _snapshot = crate::match_finder::snapshot::test_snapshot_limit(0);
+                    let _fixed = crate::match_finder::fixed::disable_acceleration();
+                    let mut actual = Vec::new();
+                    let stats = compress_in_session(
+                        data.as_slice(),
+                        &mut actual,
+                        &config,
+                        &session,
+                        None::<std::iter::Empty<crate::match_ir::MatchCandidate>>,
+                    )
+                    .unwrap();
+                    assert_eq!(actual, expected, "{method:?}/{layout:?}/{checksum:?}");
+                    assert_eq!(stats, reference);
+                    assert!(context.candidate_index_spill_count() > 0);
+                    assert_eq!(session.file_usage().current, 0);
+                    assert_eq!(session.handle_usage().current, 7);
+                    assert_eq!(context.temp.current(), 0);
+                    assert!(context.memory.high_water() <= config.resources.memory);
+                    drop(session);
+                    assert_eq!(context.memory.current(), 0);
+                }
+            }
+        }
+    }
+    #[test]
+    fn integrated_external_failures_precede_output_and_account_input_prefix() {
+        use crate::offload::session::FaultAction;
+        let config = CompressionConfig::default();
+        for operation in [
+            Operation::Create,
+            Operation::Write,
+            Operation::Read,
+            Operation::Flush,
+        ] {
+            let c = ResourceContext::with_resources(&config.resources).unwrap();
+            let s =
+                CompressionSession::new(&c, &config.resources, OffloadPolicy::default()).unwrap();
+            s.inject(operation, 0, FaultAction::Fail);
+            let mut out = Vec::new();
+            assert!(
+                compress_in_session(
+                    &b"literal"[..],
+                    &mut out,
+                    &config,
+                    &s,
+                    Some(std::iter::empty())
+                )
+                .is_err()
+            );
+            assert!(out.is_empty());
+            assert_eq!(c.temp.current(), 0);
+            assert_eq!(s.file_usage().current, 0);
+            assert_eq!(s.io_reserved(), 0);
+        }
+        struct FailInput(bool);
+        impl Read for FailInput {
+            fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+                if self.0 {
+                    return Err(std::io::Error::other("input failed after prefix"));
+                }
+                self.0 = true;
+                b[..3].copy_from_slice(b"abc");
+                Ok(3)
+            }
+        }
+        let c = ResourceContext::with_resources(&config.resources).unwrap();
+        let s = CompressionSession::new(&c, &config.resources, OffloadPolicy::default()).unwrap();
+        let mut out = Vec::new();
+        assert_eq!(
+            compress_in_session(
+                FailInput(false),
+                &mut out,
+                &config,
+                &s,
+                Some(std::iter::empty())
+            )
+            .unwrap_err()
+            .kind(),
+            crate::ErrorKind::InputIo
+        );
+        assert_eq!(s.io_used(), 6);
+        assert!(out.is_empty());
+        assert_eq!(c.temp.current(), 0);
+    }
+
+    #[test]
+    fn final_original_identity_barrier_rejects_persistent_mutation_for_literal_and_match_inputs() {
+        for candidates in [
+            Vec::new(),
+            vec![crate::match_ir::MatchCandidate {
+                src: 0,
+                dst: 32,
+                len: 32,
+                insertion_ordinal: 0,
+            }],
+        ] {
+            let mut config = CompressionConfig::for_method(Method::M1RollingCdc);
+            config.block_size = 1024;
+            config.min_match = 26;
+            config.target_chunk = Some(32);
+            config.resources.memory = 8 * 1024 * 1024;
+            let input = b"abcdefghijklmnopqrstuvwxyz012345".repeat(4);
+            for mode in [1, 2] {
+                let resources = config.resources.clone();
+                let context = ResourceContext::with_resources(&resources).unwrap();
+                let session =
+                    CompressionSession::new(&context, &resources, OffloadPolicy::default())
+                        .unwrap();
+                let _mutation = InputMutationScope::new(mode);
+                let mut output = Vec::new();
+                let result = compress_in_session(
+                    std::io::Cursor::new(&input),
+                    &mut output,
+                    &config,
+                    &session,
+                    Some(candidates.iter().copied()),
+                );
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    crate::ErrorKind::ChecksumMismatch
+                );
+                assert!(output.is_empty());
+                assert_eq!(session.io_reserved(), 0);
+                drop(session);
+                assert_eq!(context.memory.current(), 0);
+                assert_eq!(context.temp.current(), 0);
+            }
+        }
+        for mode in 1..=4 {
+            let mut config = CompressionConfig::for_method(Method::M3FixedDigest);
+            config.block_size = 1024;
+            config.min_match = 26;
+            config.seed_size = Some(16);
+            config.resources.memory = 8 * 1024 * 1024;
+            let input = b"abcdefghijklmnopqrstuvwxyz012345".repeat(16);
+            let resources = config.resources.clone();
+            let context = ResourceContext::with_resources(&resources).unwrap();
+            let session =
+                CompressionSession::new(&context, &resources, OffloadPolicy::default()).unwrap();
+            let _mutation = InputMutationScope::new(mode);
+            let mut output = Vec::new();
+            let result = compress_in_session(
+                std::io::Cursor::new(&input),
+                &mut output,
+                &config,
+                &session,
+                None::<std::iter::Empty<crate::match_ir::MatchCandidate>>,
+            );
+            let kind = result.unwrap_err().kind();
+            assert!(
+                matches!(
+                    kind,
+                    crate::ErrorKind::ChecksumMismatch | crate::ErrorKind::TruncatedArchive
+                ),
+                "unexpected mutation error: {kind:?}"
+            );
+            assert!(output.is_empty());
+            assert_eq!(session.io_reserved(), 0);
+            drop(session);
+            assert_eq!(context.memory.current(), 0);
+            assert_eq!(context.temp.current(), 0);
+        }
+    }
 
     #[test]
     fn temp_spool_reserves_seekable_growth_and_releases_it_on_drop() {

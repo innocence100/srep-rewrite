@@ -359,13 +359,6 @@ pub(crate) struct ExactIntervalFilter {
 }
 
 impl ExactIntervalFilter {
-    pub(crate) fn new(budget: &MemoryBudget) -> Result<Self> {
-        Ok(Self {
-            index: HashMap::new(),
-            reservation: budget.reserve(0)?,
-        })
-    }
-
     pub(crate) fn consider(
         &mut self,
         output: &mut BudgetedVec<MatchCandidate>,

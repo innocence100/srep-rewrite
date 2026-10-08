@@ -1307,10 +1307,8 @@ fn decode_sequential<R: Read>(
         if let Some(metadata) = match_metadata.as_mut() {
             validate_future_metadata(metadata, header)?;
         }
-    } else {
-        if let Some(metadata) = match_metadata.as_mut() {
-            canonicalize_metadata(metadata)?;
-        }
+    } else if let Some(metadata) = match_metadata.as_mut() {
+        canonicalize_metadata(metadata)?;
     }
     let literal_bytes = header
         .uncompressed_length

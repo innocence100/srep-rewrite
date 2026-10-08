@@ -305,10 +305,14 @@ fn malformed_index_tail_is_rejected_without_large_block_loop() {
     config.resources = resources("max-wire-tail", 64 * 1024, 64 * 1024);
     config.resources.output_limit = (1u64 << 63) - 1;
     let mut archive = Vec::new();
+    // The 64KiB limit below is the malformed-archive verification gate. Archive
+    // fixture generation has separate, fully accounted encoder workspace.
+    let mut fixture_config = config.clone();
+    fixture_config.resources.memory = ResourceConfig::default().memory;
     srep::compress_with_candidates(
         Cursor::new(vec![0x5a; 1024]),
         &mut archive,
-        &config,
+        &fixture_config,
         std::iter::empty(),
     )
     .unwrap();

@@ -1,6 +1,8 @@
 //! Private fixed records and paged source runs. No native-layout serialization.
+#[cfg(test)]
+use super::contracts::StoreIdentity;
 use super::contracts::{
-    CandidateRow, Provenance, RandomStore, RecordCursor, ReplayStore, StoreIdentity, TableBuilder,
+    CandidateRow, Provenance, RandomStore, RecordCursor, ReplayStore, TableBuilder,
     VerifiedSourcePages,
 };
 use super::session::{
@@ -366,13 +368,13 @@ struct TableFile {
     handle: Option<ResourceLease>,
     slot: Option<ResourceLease>,
     bytes: Option<Reservation>,
-    directory: Arc<tempfile::TempDir>,
+    directory: Arc<crate::offload::session::DirectoryOwner>,
     io: SessionIo,
     memory: MemoryBudget,
     length: u64,
     limit: u64,
     poisoned: bool,
-    _metadata: Option<Reservation>,
+    _control: Option<Reservation>,
     #[cfg(test)]
     io_test: Option<(usize, bool, bool)>,
 }
@@ -387,16 +389,6 @@ impl TableFile {
     ) -> Result<(Self, Header)> {
         // Check all byte/control reservations before creation. Caller-owned
         // emergency guard covers the handle when emergency=true.
-        let path_bytes = session
-            .resources()
-            .temp_dir
-            .as_os_str()
-            .len()
-            .checked_add(128)
-            .and_then(|n| n.checked_mul(4))
-            .and_then(|n| n.checked_add(4096))
-            .ok_or_else(|| Error::memory_limit("table path metadata overflow"))?;
-        let metadata = session.memory().reserve(path_bytes as u64)?;
         let bytes = session.temp().reserve(0)?;
         let slot = session.acquire_file_slot()?;
         let handle = if emergency {
@@ -404,7 +396,16 @@ impl TableFile {
         } else {
             Some(session.acquire_handles(1)?)
         };
+        // directory_owner() resolves the absolute parent once; the returned Arc
+        // keeps the owner alive for cleanup. Only fixed working control is
+        // charged: the per-file cleanup owner slot, its box header, and the
+        // allocator envelope. Pathname bytes are excluded as file-pathname
+        // processing under the `--memory` contract, so this charge does not
+        // depend on path length.
         let directory = session.directory_owner()?;
+        let control = session
+            .memory()
+            .reserve(super::session::file_path_control())?;
         session.checkpoint(Operation::Create)?;
         let generation = session.next_generation()?;
         let mut file_id = [0; 16];
@@ -419,6 +420,7 @@ impl TableFile {
         let file = builder
             .tempfile_in(directory.path())
             .map_err(Error::temp_storage)?;
+        directory.verify_contains(file.path())?;
         let mut f = Self {
             file: Some(file),
             handle,
@@ -430,7 +432,7 @@ impl TableFile {
             length: 0,
             limit: session.policy().max_file_bytes.min(session.temp().limit()),
             poisoned: false,
-            _metadata: Some(metadata),
+            _control: Some(control),
             #[cfg(test)]
             io_test: None,
         };
@@ -592,41 +594,52 @@ impl TableFile {
         let named = self.file.take().unwrap();
         let (file, path) = named.into_parts();
         let token = lease.close_file(file);
-        self.remove_or_defer(path.to_path_buf());
-        drop(path);
+        // Transfer the pre-owned cleanup path with no allocation: TempPath is
+        // closed (removing the file) and its boxed path is moved into the
+        // cleanup entry only when removal fails.
+        self.remove_or_defer_temppath(path);
         Ok(token)
     }
-    fn remove_or_defer(&mut self, path: std::path::PathBuf) {
-        if self
-            .io
-            .checkpoint(Operation::Remove)
-            .and_then(|_| std::fs::remove_file(&path).map_err(Error::temp_storage))
-            .is_err()
-        {
-            self.io.defer_cleanup_with_metadata(
-                CleanupEntry {
-                    path,
-                    bytes: self.bytes.take().unwrap(),
-                    file: self.slot.take().unwrap(),
-                    directory: self.directory.clone(),
-                },
-                self._metadata.take().expect("live table metadata"),
-            );
+    fn remove_or_defer_temppath(&mut self, path: tempfile::TempPath) {
+        if self.io.checkpoint(Operation::Remove).is_ok() && std::fs::remove_file(&path).is_ok() {
+            return;
         }
+        let recovered: std::path::PathBuf = match path.keep() {
+            Ok(owned) => owned,
+            Err(failed) => failed.path.to_path_buf(),
+        };
+        self.defer_owned_path(recovered);
+    }
+    /// The caller transfers ownership of an already-owned path; no
+    /// allocation occurs here. The fixed `_control` reservation moves with the
+    /// deferred cleanup entry so its working-state charge stays live until the
+    /// file is verified removed.
+    fn defer_owned_path(&mut self, path: std::path::PathBuf) {
+        self.io.defer_cleanup_with_metadata(
+            CleanupEntry {
+                path,
+                bytes: self.bytes.take().unwrap(),
+                file: self.slot.take().unwrap(),
+                directory: self.directory.clone(),
+            },
+            self._control.take().expect("live table control"),
+        );
     }
 }
 impl Drop for TableFile {
     fn drop(&mut self) {
         if let Some(file) = self.file.take() {
-            let path = file.path().to_path_buf();
-            drop(file);
+            // Transfer the owned path with no allocation: the TempPath is
+            // closed (removing the file) and its boxed path moves into the
+            // cleanup entry only when removal fails.
+            let path = file.into_temp_path();
             #[cfg(test)]
             if self.handle.is_none() {
                 self.io
                     .note_lifecycle(super::session::LifecycleEvent::EmergencyFileClosed);
             }
             self.handle.take();
-            self.remove_or_defer(path);
+            self.remove_or_defer_temppath(path);
         }
     }
 }
@@ -704,6 +717,7 @@ impl<T: FixedRecord> TableBuilder<T> for TypedTableBuilder<T> {
     fn append(&mut self, row: T) -> Result<u64> {
         self.terminal(|this| this.append_inner(row))
     }
+    #[cfg(test)]
     fn read_committed(&mut self, i: u64) -> Result<T> {
         self.terminal(|this| this.read_committed_inner(i))
     }
@@ -748,6 +762,7 @@ impl<T: FixedRecord> TypedTableBuilder<T> {
         self.count = next;
         Ok(next - 1)
     }
+    #[cfg(test)]
     fn read_committed_inner(&mut self, i: u64) -> Result<T> {
         if i >= self.count {
             return Err(Error::corrupt_index("uncommitted table row"));
@@ -778,6 +793,7 @@ pub(crate) struct RecordTable<T: FixedRecord> {
 /// identity/sequence/checksum is checked. Eviction never changes row semantics.
 pub(crate) struct RecordPageCache {
     bytes: BudgetedVec<u8>,
+    page_len: usize,
     tags: [Option<(RecordMeta, u64, usize, bool)>; 64],
     _metadata: Reservation,
 }
@@ -787,10 +803,12 @@ impl RecordPageCache {
             return Err(Error::invalid_config("record cache requires2..64 pages"));
         }
         let metadata = memory.reserve(std::mem::size_of::<Self>() as u64)?;
-        let mut bytes = BudgetedVec::with_capacity(pages * PAGE_LEN, memory)?;
-        bytes.resize(pages * PAGE_LEN, 0)?;
+        let page_len = (memory.limit() / 64).clamp(256, PAGE_LEN as u64) as usize;
+        let mut bytes = BudgetedVec::with_capacity(pages * page_len, memory)?;
+        bytes.resize(pages * page_len, 0)?;
         Ok(Self {
             bytes,
+            page_len,
             tags: [None; 64],
             _metadata: metadata,
         })
@@ -832,23 +850,38 @@ impl RecordPageCache {
         let mut copied = 0;
         while copied < T::WIDTH {
             let at = start + copied as u64;
-            let page = at / PAGE_LEN as u64;
-            let offset = (at % PAGE_LEN as u64) as usize;
-            let slot = (page % (self.bytes.len() / PAGE_LEN) as u64) as usize;
-            let valid = (payload - page * PAGE_LEN as u64).min(PAGE_LEN as u64) as usize;
+            let page = at / self.page_len as u64;
+            let offset = (at % self.page_len as u64) as usize;
+            let slot = (page % (self.bytes.len() / self.page_len) as u64) as usize;
+            let valid = (payload - page * self.page_len as u64).min(self.page_len as u64) as usize;
             // A growing partial page changes valid, forcing a fresh read. Full
             // immutable prefix pages remain hits. Seal state forces boundary
             // revalidation even if count/payload happen to be unchanged.
             let key = (header.meta, page, valid, sealed);
-            let buffer = &mut self.bytes.as_mut_slice()[slot * PAGE_LEN..(slot + 1) * PAGE_LEN];
+            let buffer =
+                &mut self.bytes.as_mut_slice()[slot * self.page_len..(slot + 1) * self.page_len];
             if self.tags[slot] != Some(key) {
+                let retained = match self.tags[slot] {
+                    Some((meta, old_page, old_valid, old_sealed))
+                        if meta == header.meta
+                            && old_page == page
+                            && old_sealed == sealed
+                            && old_valid < valid =>
+                    {
+                        old_valid
+                    }
+                    _ => 0,
+                };
                 self.tags[slot] = None;
                 if sealed {
                     file.verify_header(header)?;
                 } else {
                     file.verify_building(header)?;
                 }
-                file.read_at(HEADER_LEN + page * PAGE_LEN as u64, &mut buffer[..valid])?;
+                file.read_at(
+                    HEADER_LEN + page * self.page_len as u64 + retained as u64,
+                    &mut buffer[retained..valid],
+                )?;
                 self.tags[slot] = Some(key);
             }
             let take = (T::WIDTH - copied).min(valid - offset);
@@ -861,6 +894,7 @@ impl RecordPageCache {
 pub(crate) type CandidateTableBuilder = TypedTableBuilder<CandidateRow>;
 pub(crate) type CandidateTableStore = RecordTable<CandidateRow>;
 impl<T: FixedRecord> RecordTable<T> {
+    #[cfg(test)]
     pub(crate) fn identity(&self) -> StoreIdentity {
         StoreIdentity {
             session: self.header.meta.session,
@@ -884,15 +918,25 @@ impl<T: FixedRecord> RecordTable<T> {
         f.verify_header(self.header)?;
         let mut hash = blake3::Hasher::new();
         let mut previous: Option<T> = None;
-        let mut b = [0; 96];
-        for i in 0..self.header.count {
-            f.read_at(record_offset(i, T::WIDTH)?, &mut b[..T::WIDTH])?;
-            hash.update(&b[..T::WIDTH]);
-            let row = T::decode(self.header.meta, i, &b[..T::WIDTH])?;
-            if previous.is_some_and(|p| p.compare(&row).is_gt()) {
-                return Err(Error::corrupt_index("table order changed"));
+        let records = (f.memory.limit() / 4096 / T::WIDTH as u64).clamp(1, 1024) as usize;
+        let mut buffer = BudgetedVec::with_capacity(records * T::WIDTH, &f.memory)?;
+        buffer.resize(records * T::WIDTH, 0)?;
+        let mut i = 0;
+        while i < self.header.count {
+            let count = (self.header.count - i).min(records as u64) as usize;
+            f.read_at(
+                record_offset(i, T::WIDTH)?,
+                &mut buffer.as_mut_slice()[..count * T::WIDTH],
+            )?;
+            hash.update(&buffer.as_slice()[..count * T::WIDTH]);
+            for encoded in buffer.as_slice()[..count * T::WIDTH].chunks_exact(T::WIDTH) {
+                let row = T::decode(self.header.meta, i, encoded)?;
+                if previous.is_some_and(|p| p.compare(&row).is_gt()) {
+                    return Err(Error::corrupt_index("table order changed"));
+                }
+                previous = Some(row);
+                i += 1;
             }
-            previous = Some(row);
         }
         if hash.finalize().as_bytes() != &self.payload_digest {
             return Err(Error::corrupt_index("table differs from writer digest"));
@@ -916,11 +960,19 @@ impl<T: FixedRecord> ReplayStore<T> for RecordTable<T> {
             return Err(Error::memory_limit("table cursor limit"));
         }
         let reservation = self.file.borrow().memory.reserve(128)?;
+        let memory = self.file.borrow().memory.clone();
+        let records = (memory.limit() / 4096 / T::WIDTH as u64).clamp(1, 1024) as usize;
+        let mut buffer = BudgetedVec::with_capacity(records * T::WIDTH, &memory)?;
+        buffer.resize(records * T::WIDTH, 0)?;
+        self.file.borrow_mut().verify_header(self.header)?;
         self.cursors.set(self.cursors.get() + 1);
         Ok(Box::new(TableCursor {
             table: self,
             position: 0,
             _reservation: reservation,
+            buffer,
+            start: 0,
+            loaded: 0,
         }))
     }
 }
@@ -943,6 +995,9 @@ struct TableCursor<'a, T: FixedRecord> {
     table: &'a RecordTable<T>,
     position: u64,
     _reservation: Reservation,
+    buffer: BudgetedVec<u8>,
+    start: u64,
+    loaded: u64,
 }
 impl<T: FixedRecord> Drop for TableCursor<'_, T> {
     fn drop(&mut self) {
@@ -964,7 +1019,29 @@ impl<T: FixedRecord> RecordCursor<T> for TableCursor<'_, T> {
         if self.position == self.table.len() {
             return Ok(None);
         }
-        let row = self.table.read_at(self.position)?;
+        if self.buffer.len() == T::WIDTH {
+            let row = self.table.read_at(self.position)?;
+            self.position += 1;
+            return Ok(Some(row));
+        }
+        if self.position < self.start || self.position >= self.start + self.loaded {
+            let count =
+                (self.table.len() - self.position).min((self.buffer.len() / T::WIDTH) as u64);
+            let mut file = self.table.file.borrow_mut();
+            file.verify_header(self.table.header)?;
+            file.read_at(
+                record_offset(self.position, T::WIDTH)?,
+                &mut self.buffer.as_mut_slice()[..count as usize * T::WIDTH],
+            )?;
+            self.start = self.position;
+            self.loaded = count;
+        }
+        let offset = (self.position - self.start) as usize * T::WIDTH;
+        let row = T::decode(
+            self.table.header.meta,
+            self.position,
+            &self.buffer.as_slice()[offset..offset + T::WIDTH],
+        )?;
         self.position += 1;
         Ok(Some(row))
     }
@@ -1248,14 +1325,9 @@ impl PagedSourceTable {
         }
         Ok(())
     }
-    pub(crate) fn check_session(&self, s: &CompressionSession) -> Result<()> {
-        if self.header.meta.session != s.identity() {
-            return Err(Error::corrupt_index("cross-session source"));
-        }
-        Ok(())
-    }
 }
 impl VerifiedSourcePages for PagedSourceTable {
+    #[cfg(test)]
     fn identity(&self) -> StoreIdentity {
         StoreIdentity {
             session: self.header.meta.session,
@@ -1265,6 +1337,7 @@ impl VerifiedSourcePages for PagedSourceTable {
     fn entry_count(&self) -> u64 {
         self.header.count
     }
+    #[cfg(test)]
     fn read_entry(&mut self, i: u64) -> Result<IndexEntry> {
         if i >= self.header.count {
             return Err(Error::corrupt_index("source entry bounds"));

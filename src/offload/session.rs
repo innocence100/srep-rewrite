@@ -18,6 +18,14 @@ pub(crate) enum IoLimit {
     Unlimited,
     Finite(u128),
 }
+impl From<Option<u128>> for IoLimit {
+    fn from(limit: Option<u128>) -> Self {
+        match limit {
+            Some(n) => Self::Finite(n),
+            None => Self::Unlimited,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct OffloadPolicy {
     pub(crate) max_handles: u64,
@@ -37,7 +45,7 @@ impl Default for OffloadPolicy {
             max_file_bytes: i64::MAX as u64,
             max_fan_in: 16,
             spill_mode: SpillMode::Adaptive,
-            io_limit: IoLimit::Unlimited,
+            io_limit: None.into(),
         }
     }
 }
@@ -82,12 +90,104 @@ pub(crate) struct CountSnapshot {
 struct CountLedger {
     state: Mutex<CountSnapshot>,
     limit: u64,
+    _control: Arc<SharedControl>,
+}
+/// Reservation owner for heap allocations shared by session-created owners.
+/// It is deliberately separate from CompressionSession so ResourceLease and
+/// SessionIo clones keep this charge live after the session is dropped.
+#[derive(Debug)]
+pub(crate) struct SharedControl {
+    pub(crate) _reservation: Reservation,
+}
+#[derive(Debug)]
+pub(crate) struct DirectoryOwner {
+    pub(crate) tempdir: tempfile::TempDir,
+    /// The resolved absolute parent. It is retained so later temporary-file
+    /// creation never repeats the cwd query and a relative configured parent
+    /// stays consistent even if the process cwd changes. This is file-pathname
+    /// processing; per the `--memory` contract its heap bytes are excluded from
+    /// managed working-memory accounting. Only the fixed inline control state
+    /// below is charged.
+    pub(crate) absolute_parent: std::path::PathBuf,
+    pub(crate) _control: Reservation,
+}
+impl DirectoryOwner {
+    pub(crate) fn path(&self) -> &std::path::Path {
+        self.tempdir.path()
+    }
+    /// The cached absolute parent. Temporary-file owners use it to verify that
+    /// the created directory path lies under the same absolute parent, which
+    /// keeps cleanup correct even if the process current directory changes
+    /// after a relative parent was configured.
+    pub(crate) fn parent(&self) -> &std::path::Path {
+        &self.absolute_parent
+    }
+    /// Defensive consistency check for a freshly created temporary file: its
+    /// path must be under the cached absolute parent. This is control-only and
+    /// costs no managed working bytes.
+    pub(crate) fn verify_contains(&self, child: &std::path::Path) -> Result<()> {
+        if child.starts_with(self.parent()) {
+            Ok(())
+        } else {
+            Err(Error::temp_storage_context(
+                "temporary path escaped resolved parent",
+            ))
+        }
+    }
+}
+/// Fixed working-control charge for one `DirectoryOwner`. It covers the owner
+/// value, its `Arc` header, and the allocator/box envelope for the inline
+/// control state. The absolute path bytes and the `TempDir` pathname are
+/// excluded as file-pathname processing under the `--memory` contract.
+fn directory_owner_control() -> u64 {
+    u64::try_from(
+        std::mem::size_of::<DirectoryOwner>()
+            + 2 * std::mem::size_of::<usize>()
+            + PATH_ALLOCATOR_ENVELOPE,
+    )
+    .unwrap_or(u64::MAX)
+}
+/// Fixed working-control charge for one per-file cleanup owner. It covers the
+/// `TempPath` box header, allocator envelope, and the deferred cleanup entry
+/// slot-control state that persists until the file is verified removed. The
+/// pathname bytes themselves are excluded as file-pathname processing; this
+/// charge is deliberately independent of path length.
+pub(crate) fn file_path_control() -> u64 {
+    u64::try_from(
+        std::mem::size_of::<CleanupEntry>()
+            + 2 * std::mem::size_of::<usize>()
+            + PATH_ALLOCATOR_ENVELOPE,
+    )
+    .unwrap_or(u64::MAX)
+}
+/// Fixed allocator/box envelope for pathname owners. This is control overhead,
+/// not the pathname bytes themselves, and is length-independent.
+const PATH_ALLOCATOR_ENVELOPE: usize = 64;
+/// Resolve a configured temporary parent to an absolute path. The returned
+/// `PathBuf` owns its exact-size allocation so no uncharged duplicate path
+/// survives; its bytes are excluded from managed working-memory accounting as
+/// file-pathname processing. No global current-directory mutation occurs.
+fn resolve_absolute_parent(configured: &std::path::Path) -> Result<std::path::PathBuf> {
+    if configured.is_absolute() {
+        return Ok(configured.to_path_buf());
+    }
+    let cwd = std::env::current_dir().map_err(Error::temp_storage)?;
+    let mut joined = std::path::PathBuf::with_capacity(
+        cwd.as_os_str()
+            .len()
+            .saturating_add(configured.as_os_str().len())
+            .saturating_add(1),
+    );
+    joined.push(&cwd);
+    joined.push(configured);
+    Ok(joined)
 }
 impl CountLedger {
-    fn new(limit: u64) -> Arc<Self> {
+    fn new(limit: u64, control: Arc<SharedControl>) -> Arc<Self> {
         Arc::new(Self {
             state: Mutex::new(CountSnapshot::default()),
             limit,
+            _control: control,
         })
     }
     fn acquire(self: &Arc<Self>, amount: u64) -> Result<ResourceLease> {
@@ -156,6 +256,7 @@ pub(crate) struct IoSnapshot {
 struct IoLedger {
     state: Mutex<IoSnapshot>,
     limit: IoLimit,
+    _control: Arc<SharedControl>,
 }
 #[derive(Debug)]
 pub(crate) struct IoReservation {
@@ -163,6 +264,7 @@ pub(crate) struct IoReservation {
     remaining: u128,
 }
 impl IoReservation {
+    #[cfg(test)]
     pub(crate) fn remaining(&self) -> u128 {
         self.remaining
     }
@@ -199,12 +301,14 @@ impl Drop for IoReservation {
 
 /// Charge physical growth before writing. The owner must retain this charge for
 /// a contaminated/partial file until removal or successful truncation.
+#[cfg(test)]
 pub(crate) struct TempFileLease {
     bytes: Reservation,
     length: u64,
     limit: u64,
     _file: ResourceLease,
 }
+#[cfg(test)]
 impl TempFileLease {
     pub(crate) fn grow_to(&mut self, length: u64) -> Result<()> {
         if length > self.limit {
@@ -229,6 +333,7 @@ impl TempFileLease {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum WorkspaceKind {
     Candidate,
+    #[cfg(test)]
     SourceQuery,
     SourceCache,
     SourceFilter,
@@ -273,15 +378,24 @@ impl<T> Drop for SourceLoan<'_, T> {
     }
 }
 impl Workspace {
-    fn new(memory: &MemoryBudget, memtable_override: Option<u64>) -> Result<Self> {
+    fn new(
+        memory: &MemoryBudget,
+        memtable_override: Option<u64>,
+        compact: bool,
+        tiny: bool,
+        full: bool,
+    ) -> Result<Self> {
         const MIB: u64 = 1024 * 1024;
-        if memory.limit().saturating_sub(memory.current()) < 2 * MIB {
+        if memory.limit().saturating_sub(memory.current()) < 96 * 1024 {
             return Err(Error::memory_limit(
-                "offload mandatory workspace requires 2 MiB",
+                "offload mandatory workspace requires 96 KiB",
             ));
         }
-        let full = memory.limit().saturating_sub(memory.current()) >= 128 * MIB;
-        let mut sizes = if full {
+        let mut sizes = if tiny {
+            [1024, 1024, 8192, 512, 1024, 1024]
+        } else if compact {
+            [4096, 4096, 65536, 1024, 4096, 4096]
+        } else if full {
             [4 * MIB, 8 * MIB, 4 * MIB, 4 * MIB, 32 * MIB, 64 * 1024]
         } else {
             [
@@ -293,8 +407,22 @@ impl Workspace {
                 64 * 1024,
             ]
         };
-        sizes[4] = memtable_override.unwrap_or(sizes[4]).min(sizes[4]);
-        let control = memory.reserve(if full { 4 * MIB } else { 128 * 1024 })?;
+        sizes[4] = memtable_override.unwrap_or(sizes[4]).min(if tiny {
+            64 * 1024
+        } else if compact {
+            512 * 1024
+        } else {
+            sizes[4]
+        });
+        let control = memory.reserve(if tiny {
+            4096
+        } else if compact {
+            8192
+        } else if full {
+            4 * MIB
+        } else {
+            128 * 1024
+        })?;
         fn buffer(bytes: u64, budget: &MemoryBudget) -> Result<RefCell<BudgetedVec<u8>>> {
             let len = usize::try_from(bytes)
                 .map_err(|_| Error::memory_limit("workspace length overflow"))?;
@@ -315,6 +443,7 @@ impl Workspace {
     fn cell(&self, kind: WorkspaceKind) -> &RefCell<BudgetedVec<u8>> {
         match kind {
             WorkspaceKind::Candidate => &self.candidate,
+            #[cfg(test)]
             WorkspaceKind::SourceQuery => &self.source_query,
             WorkspaceKind::SourceCache => &self.source_cache,
             WorkspaceKind::SourceFilter => &self.source_filter,
@@ -333,7 +462,6 @@ pub(crate) enum Operation {
     Seek,
     Flush,
     Truncate,
-    Close,
     Remove,
     PreRead,
     PreRewind,
@@ -370,6 +498,8 @@ struct Fault {
 }
 
 pub(crate) struct CompressionSession {
+    profile: bool,
+    profile_started: std::time::Instant,
     memory: MemoryBudget,
     temp: TempBudget,
     resources: ResourceConfig,
@@ -380,21 +510,28 @@ pub(crate) struct CompressionSession {
     handles: Arc<CountLedger>,
     files: Arc<CountLedger>,
     workspace: Workspace,
+    // Covers heap-backed ledgers and construction-time control metadata before
+    // their Arc allocations. The workspace's compact 8 KiB control reservation
+    // separately covers its fixed cells/RefCells; cleanup_registry_bytes()
+    // covers the 192 deferred-owner slots and its Arc allocation.
     // Reserved for nested candidate compaction, never offered to source queries.
     emergency: RefCell<Option<ResourceLease>>,
     _external: ResourceLease,
     cancelled: Arc<AtomicBool>,
-    directory: RefCell<Option<Arc<tempfile::TempDir>>>,
+    directory: RefCell<Option<Arc<DirectoryOwner>>>,
     candidate_index_memtable_bytes: u64,
     candidate_index_spills: Arc<AtomicU64>,
     #[cfg(test)]
     fault: Arc<Mutex<[Option<Fault>; 4]>>,
     cleanup: Arc<CleanupRegistry>,
+    shared_control: Arc<SharedControl>,
     source_memtable_pool: RefCell<Option<BudgetedVec<crate::candidate_index::IndexEntry>>>,
     source_cache_pool: RefCell<Option<BudgetedVec<u8>>>,
     source_filter_pool: RefCell<Option<BudgetedVec<u8>>>,
     source_initialized: Cell<bool>,
     source_failed: Cell<bool>,
+    generation_finished: Cell<bool>,
+    m3_epoch: Cell<u8>,
     #[cfg(test)]
     lifecycle: Arc<Mutex<Lifecycle>>,
 }
@@ -410,13 +547,53 @@ impl CompressionSession {
         {
             return Err(Error::invalid_config("context/resource limits disagree"));
         }
-        let handles = CountLedger::new(policy.max_handles);
+        // This reservation is deliberately acquired before CountLedger::new:
+        // the two Arc<CountLedger> allocations and their ResourceLease fields
+        // must not be created before their parent memory admission succeeds.
+        let available = context
+            .memory
+            .limit()
+            .saturating_sub(context.memory.current());
+        let compact = available < 2 * 1024 * 1024;
+        let tiny = available < 512 * 1024;
+        let full = available >= 128 * 1024 * 1024;
+        // io_control is fixed working state only. It deliberately does NOT
+        // include any pathname-length envelope: the configured temp_dir is a
+        // file pathname, and its length is excluded from managed working
+        // memory under the `--memory` contract.
+        let io_control = std::mem::size_of::<IoLedger>()
+            .saturating_add(std::mem::size_of::<AtomicBool>())
+            .saturating_add(4 * std::mem::size_of::<usize>());
+        let admission_control = context.memory.reserve(
+            session_control_bytes()
+                .checked_add(io_control as u64)
+                .ok_or_else(|| Error::memory_limit("shared control size overflows"))?,
+        )?;
+        let shared_control = Arc::new(SharedControl {
+            _reservation: admission_control,
+        });
+        let handles = CountLedger::new(policy.max_handles, shared_control.clone());
         let external = handles.acquire(policy.external_handles)?;
         let emergency = handles.acquire(3)?;
         // All admission/allocation occurs BEFORE any tempfile creation.
-        let workspace = Workspace::new(&context.memory, context.candidate_index_memtable_bytes)?;
+        // Cleanup owners can outlive the session (for example when a platform
+        // keeps a temporary file open).  Charge the complete registry object,
+        // its Arc allocation header, and the retained Arc handle before any
+        // workspace allocation.  The reservation is moved into the registry
+        // itself, so deferred cleanup cannot outlive its memory owner or
+        // silently steal another workspace's allowance.
+        let cleanup_control = context.memory.reserve(cleanup_registry_bytes())?;
+        let workspace = Workspace::new(
+            &context.memory,
+            context.candidate_index_memtable_bytes,
+            compact,
+            tiny,
+            full,
+        )?;
         let candidate_index_memtable_bytes = workspace.source_memtable.borrow().len() as u64;
         Ok(Self {
+            profile: std::env::var_os("SREP_OFFLOAD_PROFILE").is_some(),
+            profile_started: std::time::Instant::now(),
             memory: context.memory.clone(),
             temp: context.temp.clone(),
             resources: resources.clone(),
@@ -432,9 +609,10 @@ impl CompressionSession {
             io: Arc::new(IoLedger {
                 state: Mutex::new(IoSnapshot::default()),
                 limit: policy.io_limit,
+                _control: shared_control.clone(),
             }),
             handles,
-            files: CountLedger::new(policy.max_temp_files),
+            files: CountLedger::new(policy.max_temp_files, shared_control.clone()),
             workspace,
             emergency: RefCell::new(Some(emergency)),
             _external: external,
@@ -444,12 +622,15 @@ impl CompressionSession {
             candidate_index_spills: context.candidate_index_spills.clone(),
             #[cfg(test)]
             fault: Arc::new(Mutex::new(std::array::from_fn(|_| None))),
-            cleanup: Arc::new(CleanupRegistry::new()),
+            cleanup: Arc::new(CleanupRegistry::new(cleanup_control)),
+            shared_control,
             source_memtable_pool: RefCell::new(None),
             source_cache_pool: RefCell::new(None),
             source_filter_pool: RefCell::new(None),
             source_initialized: Cell::new(false),
             source_failed: Cell::new(false),
+            generation_finished: Cell::new(false),
+            m3_epoch: Cell::new(0),
             #[cfg(test)]
             lifecycle: Arc::new(Mutex::new(Lifecycle {
                 events: [None; 32],
@@ -459,6 +640,23 @@ impl CompressionSession {
     }
     pub(crate) fn memory(&self) -> &MemoryBudget {
         &self.memory
+    }
+    /// Opt-in bounded diagnostic stream, never retained as an event collection.
+    pub(crate) fn profile(&self, event: &str, detail: std::fmt::Arguments<'_>) {
+        if self.profile {
+            let io = *self.io.state.lock().unwrap_or_else(|e| e.into_inner());
+            eprintln!(
+                "OFFLOAD_PROFILE event={event} elapsed_ms={} ram={} ram_peak={} temp={} temp_peak={} handles={} files={} io={} {detail}",
+                self.profile_started.elapsed().as_millis(),
+                self.memory.current(),
+                self.memory.high_water(),
+                self.temp.current(),
+                self.temp.high_water(),
+                self.handle_usage().current,
+                self.file_usage().current,
+                io.used_actual
+            );
+        }
     }
     /// Existing exact accelerators take ResourceContext; this view shares the
     /// same ledgers/counter rather than creating fresh resource budgets.
@@ -478,6 +676,7 @@ impl CompressionSession {
     pub(crate) fn note_candidate_index_spill(&self) -> Result<()> {
         next_checked(&self.candidate_index_spills).map(|_| ())
     }
+    #[cfg(test)]
     pub(crate) fn candidate_index_spill_count(&self) -> u64 {
         self.candidate_index_spills.load(Ordering::Acquire)
     }
@@ -500,6 +699,11 @@ impl CompressionSession {
         self.source_failed.set(true);
     }
     fn initialize_source_pools(&self) -> Result<()> {
+        if self.generation_finished.get() {
+            return Err(Error::temp_storage_context(
+                "generation phase already finished",
+            ));
+        }
         self.check_cancelled()?;
         if self.source_failed.get() {
             return Err(Error::temp_storage_context(
@@ -558,6 +762,83 @@ impl CompressionSession {
     pub(crate) fn source_filter(&self) -> Result<SourceLoan<'_, u8>> {
         self.loan(&self.source_filter_pool)
     }
+    /// One-way phase transition, only after verified finders/sinks have finished.
+    /// Any outstanding source loan prevents reclamation; no budget reset occurs.
+    pub(crate) fn finish_generation(&self) -> Result<()> {
+        self.check_cancelled()?;
+        if self.generation_finished.get()
+            || self.source_failed.get()
+            || matches!(self.m3_epoch.get(), 1..=3)
+        {
+            return Err(Error::temp_storage_context("invalid generation transition"));
+        }
+        let mut mem = self
+            .source_memtable_pool
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source memtable borrowed"))?;
+        let mut cache = self
+            .source_cache_pool
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source cache borrowed"))?;
+        let mut filter = self
+            .source_filter_pool
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source filter borrowed"))?;
+        if self.source_initialized.get() && (mem.is_none() || cache.is_none() || filter.is_none()) {
+            return Err(Error::temp_storage_context("source loans still active"));
+        }
+        // Obtain all raw workspace borrows before dropping any allocation.
+        let mut raw_mem = self
+            .workspace
+            .source_memtable
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source workspace borrowed"))?;
+        let mut raw_cache = self
+            .workspace
+            .source_cache
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source workspace borrowed"))?;
+        let mut raw_filter = self
+            .workspace
+            .source_filter
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("source workspace borrowed"))?;
+        let mut query = self
+            .workspace
+            .source_query
+            .try_borrow_mut()
+            .map_err(|_| Error::temp_storage_context("query workspace borrowed"))?;
+        mem.take();
+        cache.take();
+        filter.take();
+        *raw_mem = BudgetedVec::new(&self.memory)?;
+        *raw_cache = BudgetedVec::new(&self.memory)?;
+        *raw_filter = BudgetedVec::new(&self.memory)?;
+        *query = BudgetedVec::new(&self.memory)?;
+        self.generation_finished.set(true);
+        Ok(())
+    }
+    /// Parent-owned linear m3 epoch transitions; counters/poison are never reset.
+    pub(super) fn m3_transition(&self, expected: u8, next: u8) -> Result<()> {
+        self.check_cancelled()?;
+        if self.generation_finished.get()
+            || self.source_failed.get()
+            || self.m3_epoch.get() != expected
+        {
+            return Err(Error::corrupt_index("invalid m3 epoch transition"));
+        }
+        if self.source_initialized.get()
+            && (self.source_memtable_pool.borrow().is_none()
+                || self.source_cache_pool.borrow().is_none()
+                || self.source_filter_pool.borrow().is_none())
+        {
+            return Err(Error::temp_storage_context(
+                "m3 epoch has outstanding source loans",
+            ));
+        }
+        self.m3_epoch.set(next);
+        Ok(())
+    }
     pub(crate) fn workspace(&self, kind: WorkspaceKind) -> Result<RefMut<'_, [u8]>> {
         self.check_cancelled()?;
         let b = self
@@ -596,27 +877,42 @@ impl CompressionSession {
     }
     /// Lazy exclusive directory; all mandatory memory/handle admission already
     /// succeeded in new(). No file is created merely by constructing a session.
+    ///
+    /// Only fixed working-control state is charged: the owner value, its `Arc`
+    /// header, and the allocator/box envelope. The configured parent may be
+    /// relative; it is resolved to an absolute, cached path for correct cleanup
+    /// and cwd-change consistency, but the pathname bytes are excluded from
+    /// managed working-memory accounting as file-pathname processing. No OS
+    /// pathname length is rejected by a custom memory policy; a genuinely
+    /// over-long platform path fails only as an ordinary OS I/O error.
     pub(crate) fn temp_directory(&self) -> Result<Ref<'_, std::path::Path>> {
         if self.directory.borrow().is_none() {
             self.checkpoint(Operation::Create)?;
-            let directory = tempfile::Builder::new()
+            let control = self.memory.reserve(directory_owner_control())?;
+            let absolute = resolve_absolute_parent(&self.resources.temp_dir)?;
+            std::fs::create_dir_all(&absolute).map_err(Error::temp_storage)?;
+            let tempdir = tempfile::Builder::new()
                 .prefix("srep-offload-")
-                .tempdir_in(&self.resources.temp_dir)
+                .tempdir_in(&absolute)
                 .map_err(Error::temp_storage)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))
+                std::fs::set_permissions(tempdir.path(), std::fs::Permissions::from_mode(0o700))
                     .map_err(Error::temp_storage)?;
             }
-            *self.directory.borrow_mut() = Some(Arc::new(directory));
+            *self.directory.borrow_mut() = Some(Arc::new(DirectoryOwner {
+                tempdir,
+                absolute_parent: absolute,
+                _control: control,
+            }));
         }
         Ok(Ref::map(self.directory.borrow(), |d| {
             d.as_ref().expect("initialized directory").path()
         }))
     }
     /// Every temporary-file owner retains this until its handles/path are gone.
-    pub(crate) fn directory_owner(&self) -> Result<Arc<tempfile::TempDir>> {
+    pub(crate) fn directory_owner(&self) -> Result<Arc<DirectoryOwner>> {
         drop(self.temp_directory()?);
         Ok(self
             .directory
@@ -625,6 +921,7 @@ impl CompressionSession {
             .expect("initialized directory")
             .clone())
     }
+    #[cfg(test)]
     pub(crate) fn admit_file(&self) -> Result<TempFileLease> {
         self.check_cancelled()?;
         Ok(TempFileLease {
@@ -634,6 +931,7 @@ impl CompressionSession {
             _file: self.files.acquire(1)?,
         })
     }
+    #[cfg(test)]
     pub(crate) fn merge_fan_in(&self, wanted: usize) -> Result<(usize, ResourceLease)> {
         let free = self.policy.max_handles - self.handles.snapshot().current;
         let inputs = wanted
@@ -676,15 +974,19 @@ impl CompressionSession {
                 .ok_or_else(|| Error::temp_storage_context("I/O envelope overflow"))?,
         )
     }
+    #[cfg(test)]
     pub(crate) fn io_snapshot(&self) -> IoSnapshot {
         *self.io.state.lock().unwrap_or_else(|e| e.into_inner())
     }
+    #[cfg(test)]
     pub(crate) fn io_used(&self) -> u128 {
         self.io_snapshot().used_actual
     }
+    #[cfg(test)]
     pub(crate) fn io_reserved(&self) -> u128 {
         self.io_snapshot().reserved
     }
+    #[cfg(test)]
     pub(crate) fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
@@ -718,6 +1020,7 @@ impl CompressionSession {
             cancelled: self.cancelled.clone(),
             temp: self.temp.clone(),
             cleanup: self.cleanup.clone(),
+            _shared_control: self.shared_control.clone(),
             #[cfg(test)]
             lifecycle: self.lifecycle.clone(),
             #[cfg(test)]
@@ -747,6 +1050,7 @@ pub(crate) struct SessionIo {
     cancelled: Arc<AtomicBool>,
     temp: TempBudget,
     cleanup: Arc<CleanupRegistry>,
+    _shared_control: Arc<SharedControl>,
     #[cfg(test)]
     fault: Arc<Mutex<[Option<Fault>; 4]>>,
     #[cfg(test)]
@@ -787,10 +1091,7 @@ impl SessionIo {
     }
     pub(crate) fn checkpoint(&self, op: Operation) -> Result<()> {
         // Cleanup must run even after cancellation.
-        let cleanup = matches!(
-            op,
-            Operation::Truncate | Operation::Remove | Operation::Close
-        );
+        let cleanup = matches!(op, Operation::Truncate | Operation::Remove);
         if !cleanup && self.cancelled.load(Ordering::Acquire) {
             return Err(Error::temp_storage_context("offload operation cancelled"));
         }
@@ -826,11 +1127,12 @@ impl SessionIo {
     pub(crate) fn empty_temp_reservation(&self) -> Reservation {
         self.temp.reserve(0).expect("zero temp reservation")
     }
-    pub(crate) fn defer_cleanup(&self, entry: CleanupEntry) {
-        self.cleanup.insert(entry, None);
-    }
     pub(crate) fn defer_cleanup_with_metadata(&self, entry: CleanupEntry, metadata: Reservation) {
         self.cleanup.insert(entry, Some(metadata));
+    }
+    #[cfg(test)]
+    pub(crate) fn retry_cleanup(&self) -> Result<()> {
+        self.cleanup.retry()
     }
 }
 #[derive(Debug)]
@@ -838,16 +1140,62 @@ pub(crate) struct CleanupEntry {
     pub(crate) path: std::path::PathBuf,
     pub(crate) bytes: Reservation,
     pub(crate) file: ResourceLease,
-    pub(crate) directory: Arc<tempfile::TempDir>,
+    pub(crate) directory: Arc<DirectoryOwner>,
+}
+impl Drop for CleanupEntry {
+    fn drop(&mut self) {
+        // Owned guards intentionally survive until verified file removal.
+        let _ = (&self.bytes, &self.file, &self.directory);
+    }
 }
 #[derive(Debug)]
 struct CleanupRegistry {
-    entries: Mutex<[Option<(CleanupEntry, Option<Reservation>)>; 192]>,
+    entries: Mutex<CleanupSlots>,
+    // Kept inside the Arc-owned registry: SessionIo clones may retain this
+    // charge after CompressionSession itself has been dropped.
+    _control: Reservation,
+}
+type CleanupSlots = [Option<(CleanupEntry, Option<Reservation>)>; 192];
+fn session_control_bytes() -> u64 {
+    // CountLedger allocations are made before their Arc values can be stored
+    // in CompressionSession. Include both ledger values, both Arc headers, the
+    // three initial handle-lease fields, and a small mutex/allocator padding
+    // envelope. This is admission metadata, not a replacement for each
+    // ledger's runtime limits or the workspace control reservation.
+    let ledgers = 2 * std::mem::size_of::<CountLedger>() + std::mem::size_of::<IoLedger>();
+    let shared = std::mem::size_of::<SharedControl>();
+    let arc_headers = 2 * 2 * std::mem::size_of::<usize>();
+    let leases = 3 * std::mem::size_of::<ResourceLease>();
+    let envelope = 256usize;
+    u64::try_from(
+        ledgers
+            .saturating_add(shared)
+            .saturating_add(arc_headers)
+            .saturating_add(leases)
+            .saturating_add(envelope),
+    )
+    .expect("session control size fits u64")
+}
+#[cfg(test)]
+pub(crate) fn shared_control_charge() -> u64 {
+    session_control_bytes()
+}
+fn cleanup_registry_bytes() -> u64 {
+    // `Arc::new` adds the strong/weak counters in its allocation header.  The
+    // pointer stored in CompressionSession/SessionIo is inline; charge the
+    // header plus the complete registry value, including the retained
+    // reservation and mutex.  This is intentionally derived from the concrete
+    // types rather than the old 8 KiB compact guess (which was smaller than a
+    // 192-slot registry on 64-bit targets).
+    let value = std::mem::size_of::<CleanupRegistry>();
+    let arc_header = 2 * std::mem::size_of::<usize>();
+    u64::try_from(value.saturating_add(arc_header)).expect("registry size fits u64")
 }
 impl CleanupRegistry {
-    fn new() -> Self {
+    fn new(control: Reservation) -> Self {
         Self {
             entries: Mutex::new(std::array::from_fn(|_| None)),
+            _control: control,
         }
     }
     fn insert(&self, entry: CleanupEntry, metadata: Option<Reservation>) {
@@ -1052,6 +1400,425 @@ mod tests {
             )
             .is_err()
         );
+        assert_eq!(c.memory.current(), 0);
+    }
+
+    #[test]
+    fn compact_registry_control_is_admitted_before_workspace_and_released() {
+        let r = ResourceConfig {
+            memory: 1024 * 1024,
+            ..small()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        assert!(cleanup_registry_bytes() > 8192);
+        assert!(c.memory.current() >= cleanup_registry_bytes());
+        assert!(s.workspace(WorkspaceKind::Candidate).is_ok());
+        drop(s);
+        assert_eq!(c.memory.current(), 0);
+
+        let r = ResourceConfig {
+            memory: cleanup_registry_bytes().saturating_sub(1),
+            ..small()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        assert!(CompressionSession::new(&c, &r, OffloadPolicy::default()).is_err());
+        // Admission fails before directory creation or any temporary file.
+        assert_eq!(c.memory.current(), 0);
+        assert!(!r.temp_dir.join("srep-offload-").exists());
+    }
+
+    #[test]
+    fn deferred_cleanup_registry_reservation_follows_session_io_owner() {
+        let r = small();
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let io = s.io_access();
+        let mut spool = crate::codec::TempSpool::new_in_session(&s).unwrap();
+        spool.append(&[7; 32]).unwrap();
+        s.inject(Operation::Remove, 0, FaultAction::Fail);
+        drop(spool);
+        drop(s);
+        assert!(c.memory.current() >= cleanup_registry_bytes());
+        io.retry_cleanup().unwrap();
+        drop(io);
+        assert_eq!(c.memory.current(), 0);
+        assert_eq!(c.temp.current(), 0);
+    }
+
+    #[test]
+    fn directory_admission_failure_leaves_isolated_root_empty() {
+        let root = tempfile::tempdir().unwrap();
+        let r = ResourceConfig {
+            memory: 128 * 1024,
+            temp_dir: root
+                .path()
+                .join("controlled-long-parent-component-0123456789"),
+            ..small()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let held = c
+            .memory
+            .reserve(c.memory.limit() - c.memory.current())
+            .unwrap();
+        assert!(s.temp_directory().is_err());
+        drop(held);
+        drop(s);
+        assert_eq!(c.memory.current(), 0);
+        if r.temp_dir.exists() {
+            assert!(std::fs::read_dir(&r.temp_dir).unwrap().next().is_none());
+        }
+    }
+
+    #[test]
+    fn failed_remove_with_all_remaining_memory_held_uses_preowned_cleanup_charge() {
+        let root = tempfile::tempdir().unwrap();
+        let r = ResourceConfig {
+            temp_dir: root
+                .path()
+                .join("a-long-controlled-parent-component-0123456789"),
+            ..small()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let io = s.io_access();
+        let spool = crate::codec::TempSpool::new_in_session(&s).unwrap();
+        let path = spool._temp.path().to_path_buf();
+        // The pre-owned per-file control charge is fixed working state; it is
+        // length-independent and stays live through deferred cleanup.
+        let expected_control = file_path_control();
+        let before = c.memory.current();
+        let held = c
+            .memory
+            .reserve(c.memory.limit().saturating_sub(c.memory.current()))
+            .unwrap();
+        s.inject(Operation::Remove, 0, FaultAction::Fail);
+        drop(spool);
+        assert!(path.exists());
+        drop(held);
+        let retained = c.memory.current();
+        assert!(retained >= cleanup_registry_bytes());
+        // The spool's fixed cleanup control charge is part of the retained
+        // total; the pathname bytes themselves are excluded.
+        assert!(retained >= before);
+        assert!(expected_control > 0);
+        drop(s);
+        io.retry_cleanup().unwrap();
+        assert!(!path.exists());
+        assert_eq!(c.temp.current(), 0);
+        drop(io);
+        assert_eq!(c.memory.current(), 0);
+    }
+
+    /// Exact io-control admission charged in `new()`. Fixed working control
+    /// state only; no pathname bytes are included under the `--memory`
+    /// contract.
+    fn io_control_charge() -> u64 {
+        std::mem::size_of::<IoLedger>() as u64
+            + std::mem::size_of::<AtomicBool>() as u64
+            + 4 * std::mem::size_of::<usize>() as u64
+    }
+
+    /// A long absolute configured parent must not consume managed working
+    /// budget: only the recorded configuration length metadata is counted, and
+    /// the directory/spool control charges are fixed. Two live spools plus one
+    /// live table coexist and the fixed owners stay live through cleanup.
+    #[test]
+    fn long_absolute_parent_does_not_consume_managed_working_budget() {
+        use crate::offload::contracts::CandidateRow;
+        use crate::offload::storage::TypedTableBuilder;
+        let root = tempfile::tempdir().unwrap();
+        let long = root
+            .path()
+            .join("controlled-long-parent-component-0123456789-abcdefghijklmnopqrstuvwxyz");
+        let r = ResourceConfig {
+            temp_dir: long.clone(),
+            ..small()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let base = c.memory.current();
+        let dir_path = s.temp_directory().unwrap().to_path_buf();
+        assert!(dir_path.exists());
+        {
+            let owner = s.directory_owner().unwrap();
+            assert!(owner.parent().is_absolute());
+            assert_eq!(owner.parent(), long.as_path());
+        }
+        // Fixed directory control only; the long resolved path adds nothing to
+        // managed working memory.
+        assert_eq!(c.memory.current(), base + directory_owner_control());
+        // Two live spools plus one live table coexist: each adds fixed control.
+        let spool_a = crate::codec::TempSpool::new_in_session(&s).unwrap();
+        assert_eq!(
+            c.memory.current(),
+            base + directory_owner_control() + file_path_control()
+        );
+        let spool_b = crate::codec::TempSpool::new_in_session(&s).unwrap();
+        let table = TypedTableBuilder::<CandidateRow>::new(&s, 64).unwrap();
+        assert_eq!(
+            c.memory.current(),
+            base + directory_owner_control() + 3 * file_path_control()
+        );
+        // A much longer pathname leaves the managed charge identical.
+        assert!(long.as_os_str().len() > 32);
+        // Clean table drop releases exactly its fixed control.
+        drop(table);
+        s.retry_cleanup().unwrap();
+        assert_eq!(
+            c.memory.current(),
+            base + directory_owner_control() + 2 * file_path_control()
+        );
+        // Open-failure path: no file may survive and memory returns to the
+        // pre-spool level after cleanup.
+        let pre_fail = c.memory.current();
+        s.inject(Operation::Open, 0, FaultAction::Fail);
+        assert!(crate::codec::TempSpool::new_in_session(&s).is_err());
+        s.retry_cleanup().unwrap();
+        assert_eq!(c.memory.current(), pre_fail);
+        assert_eq!(c.temp.current(), 0);
+        // Clean drop of one spool, then remove-failure on the other with all
+        // remaining memory held: the survivor defers into the pre-owned fixed
+        // control registry charge. Assert the exact retained total after
+        // session drop, then zero after cleanup.
+        let path_b = spool_b._temp.path().to_path_buf();
+        drop(spool_b);
+        assert!(!path_b.exists());
+        assert_eq!(
+            c.memory.current(),
+            base + directory_owner_control() + file_path_control()
+        );
+        let held = c
+            .memory
+            .reserve(c.memory.limit().saturating_sub(c.memory.current()))
+            .unwrap();
+        s.inject(Operation::Remove, 0, FaultAction::Fail);
+        let path_a = spool_a._temp.path().to_path_buf();
+        drop(spool_a);
+        assert!(path_a.exists());
+        drop(held);
+        assert_eq!(
+            c.memory.current(),
+            base + directory_owner_control() + file_path_control()
+        );
+        let io = s.io_access();
+        drop(s);
+        let retained = c.memory.current();
+        // Complete retained charges: shared control + io control + registry
+        // + fixed directory control + one deferred spool fixed control.
+        let expected = shared_control_charge()
+            + io_control_charge()
+            + cleanup_registry_bytes()
+            + directory_owner_control()
+            + file_path_control();
+        assert_eq!(retained, expected);
+        io.retry_cleanup().unwrap();
+        assert!(!path_a.exists());
+        assert_eq!(c.temp.current(), 0);
+        drop(io);
+        assert_eq!(c.memory.current(), 0);
+    }
+
+    /// Short relative configured parent under a long current directory.
+    /// Changing the process-wide CWD is unsafe under parallel tests, so the
+    /// CWD-dependent half runs in a subprocess (`Command::current_dir`) that
+    /// re-invokes this test binary for the child entry below. The resolved
+    /// absolute path may be long; that must NOT consume managed working budget
+    /// and must NOT produce a custom MemoryBudgetExceeded. A genuinely
+    /// over-long OS path may only fail as an ordinary I/O error.
+    #[test]
+    fn short_relative_parent_under_long_cwd_ignores_path_length_for_budget() {
+        use std::process::Command;
+        if std::env::var_os("SREP_PATH_CHILD").is_some() {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        // A definite, unambiguous absolute parent; the budget must ignore its
+        // length entirely (the removed 4096 allowance no longer exists). This
+        // is intentionally a moderate single-component fixture, not a >4096
+        // CWD: the point is that path length never reaches the memory ledger.
+        let long_cwd = root
+            .path()
+            .join("long-cwd-component-0123456789-abcdefghijklmnopqrstuvwxyz-0123456789");
+        std::fs::create_dir_all(&long_cwd).unwrap();
+        let exe = std::env::current_exe().unwrap();
+        let status_path = root.path().join("child-status.txt");
+        let output = Command::new(&exe)
+            .arg("--exact")
+            .arg("offload::session::tests::short_relative_parent_child_entry")
+            .arg("--nocapture")
+            .env("SREP_PATH_CHILD", "1")
+            .env("SREP_PATH_STATUS", &status_path)
+            .env("SREP_PATH_REL", "r")
+            .current_dir(&long_cwd)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let status = std::fs::read_to_string(&status_path).unwrap();
+        let mut resolved_len = None;
+        let mut retained = None;
+        for line in status.lines() {
+            let (k, v) = line.split_once('=').unwrap();
+            match k {
+                "resolved_len" => resolved_len = Some(v.parse::<u64>().unwrap()),
+                "retained" => retained = Some(v.parse::<u64>().unwrap()),
+                _ => panic!("unexpected status {line}"),
+            }
+        }
+        let resolved_len = resolved_len.unwrap();
+        let retained = retained.unwrap();
+        // The resolved parent is the long CWD plus the short relative name:
+        // far larger than the one-character configured parent.
+        assert!(resolved_len > long_cwd.as_os_str().len() as u64);
+        assert!(resolved_len < long_cwd.as_os_str().len() as u64 + 8);
+        // Retained charges are fixed control only, independent of the long
+        // resolved path length.
+        let expected = shared_control_charge()
+            + io_control_charge()
+            + cleanup_registry_bytes()
+            + directory_owner_control()
+            + file_path_control();
+        assert_eq!(retained, expected);
+    }
+
+    /// Subprocess child entry for the test above. Never invoked directly by
+    /// the suite; the parent re-invokes the test binary with SREP_PATH_CHILD
+    /// set and the CWD pointed at a long directory.
+    #[test]
+    fn short_relative_parent_child_entry() {
+        if std::env::var_os("SREP_PATH_CHILD").is_none() {
+            return;
+        }
+        let rel = std::env::var_os("SREP_PATH_REL").unwrap();
+        let status_path = std::env::var_os("SREP_PATH_STATUS").unwrap();
+        let r = ResourceConfig {
+            temp_dir: std::path::PathBuf::from(rel),
+            ..small()
+        };
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+        let base = c.memory.current();
+        s.temp_directory().unwrap();
+        let owner = s.directory_owner().unwrap();
+        assert!(owner.parent().is_absolute());
+        let resolved_len = owner.parent().as_os_str().len() as u64;
+        // The resolved parent is long, but managed working memory only counts
+        // the fixed directory control.
+        assert!(resolved_len > 64);
+        assert_eq!(c.memory.current(), base + directory_owner_control());
+        drop(owner);
+        let spool = crate::codec::TempSpool::new_in_session(&s).unwrap();
+        assert_eq!(
+            c.memory.current(),
+            base + directory_owner_control() + file_path_control()
+        );
+        // Fail removal with all remaining memory held, then record the exact
+        // retained total after session drop for the parent to verify.
+        let held = c
+            .memory
+            .reserve(c.memory.limit().saturating_sub(c.memory.current()))
+            .unwrap();
+        s.inject(Operation::Remove, 0, FaultAction::Fail);
+        let path = spool._temp.path().to_path_buf();
+        drop(spool);
+        assert!(path.exists());
+        drop(held);
+        let io = s.io_access();
+        drop(s);
+        let retained = c.memory.current();
+        std::fs::write(
+            &status_path,
+            format!("resolved_len={resolved_len}\nretained={retained}\n"),
+        )
+        .unwrap();
+        io.retry_cleanup().unwrap();
+        assert!(!path.exists());
+        assert_eq!(c.temp.current(), 0);
+        drop(io);
+        assert_eq!(c.memory.current(), 0);
+    }
+
+    /// Managed working-memory usage is independent of path length for the same
+    /// active object count. The fixed-control charge must be identical whether
+    /// the parent is short or long.
+    #[test]
+    fn managed_usage_is_independent_of_path_length_for_same_object_count() {
+        let short_root = tempfile::tempdir().unwrap();
+        let long_root = tempfile::tempdir().unwrap();
+        // Build a long but platform-legal absolute parent: nested components
+        // each below the per-component limit, total across many components.
+        let mut long_parent = long_root.path().to_path_buf();
+        for _ in 0..20 {
+            long_parent.push("long-component-0123456789-abcdefghijklmnopqrstuvwxyz");
+        }
+        assert!(long_parent.as_os_str().len() > 1024);
+        let short = ResourceConfig {
+            temp_dir: short_root.path().to_path_buf(),
+            ..small()
+        };
+        let long = ResourceConfig {
+            temp_dir: long_parent,
+            ..small()
+        };
+        let mut baseline_delta = None;
+        for r in [&short, &long] {
+            let c = ResourceContext::with_resources(r).unwrap();
+            let s = CompressionSession::new(&c, r, OffloadPolicy::default()).unwrap();
+            let base = c.memory.current();
+            let delta = {
+                let _s1 = crate::codec::TempSpool::new_in_session(&s).unwrap();
+                let _s2 = crate::codec::TempSpool::new_in_session(&s).unwrap();
+                c.memory.current() - base
+            };
+            match baseline_delta {
+                None => baseline_delta = Some(delta),
+                Some(first) => assert_eq!(delta, first),
+            }
+            drop(s);
+            assert_eq!(c.memory.current(), 0);
+            assert_eq!(c.temp.current(), 0);
+        }
+        assert_eq!(
+            baseline_delta,
+            Some(directory_owner_control() + 2 * file_path_control())
+        );
+    }
+
+    #[test]
+    fn ledger_arc_owners_retain_shared_control_after_session_drop() {
+        let r = small();
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let (before, lease) = {
+            let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+            let before = c.memory.current();
+            let lease = s.acquire_handles(1).unwrap();
+            drop(s);
+            (before, lease)
+        };
+        let retained_with_lease = c.memory.current();
+        // Retained shared control is fixed and path-length independent: the
+        // shared-control charge plus the fixed io-control charge.
+        let expected = shared_control_charge() + io_control_charge();
+        assert_eq!(retained_with_lease, expected);
+        drop(lease);
+        assert_eq!(c.memory.current(), 0);
+        assert!(before > retained_with_lease);
+
+        let c = ResourceContext::with_resources(&r).unwrap();
+        let permit = {
+            let s = CompressionSession::new(&c, &r, OffloadPolicy::default()).unwrap();
+            let permit = s.reserve_io(7).unwrap();
+            drop(s);
+            permit
+        };
+        let retained_with_io = c.memory.current();
+        assert_eq!(retained_with_io, expected);
+        drop(permit);
         assert_eq!(c.memory.current(), 0);
     }
     #[test]

@@ -825,8 +825,17 @@ fn future_reader_spills_large_periods_to_the_shared_temp_budget() {
         insertion_ordinal: 0,
     };
     let mut archive = Vec::new();
-    srep::compress_with_candidates(Cursor::new(&input), &mut archive, &config, [candidate])
-        .unwrap();
+    // Preserve the decoder's 1KiB spilling gate; only archive fixture creation
+    // uses an independently accounted encoder budget.
+    let mut fixture_config = config.clone();
+    fixture_config.resources.memory = ResourceConfig::default().memory;
+    srep::compress_with_candidates(
+        Cursor::new(&input),
+        &mut archive,
+        &fixture_config,
+        [candidate],
+    )
+    .unwrap();
     let mut output = Vec::new();
     let context = srep::ResourceContext::with_resources(&config.resources).unwrap();
     srep::decompress_with_context(

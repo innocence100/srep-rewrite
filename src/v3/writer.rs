@@ -3,7 +3,9 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
-use crate::codec::{CompressionStats, InputSpool, TempSpool, copy_spool, spool_input};
+use crate::codec::{CompressionStats, InputSpool, TempSpool};
+#[cfg(test)]
+use crate::codec::{copy_spool, spool_input};
 use crate::config::{CompressionConfig, Layout};
 use crate::error::{Error, Result};
 use crate::format_v3::{
@@ -11,10 +13,12 @@ use crate::format_v3::{
     POSITIVE_GAIN_MIN_LEN, TAIL_MAGIC, TAIL_PREFIX_LEN, VERSION, encode_archive_header,
     encode_uleb128_to, tail_len,
 };
-use crate::match_ir::{
-    Match, MatchCandidate, NormalizedMatches, normalize_owned_matches_with_budget,
-};
-use crate::resource::{BudgetedVec, MemoryBudget, ResourceContext};
+use crate::match_ir::{Match, MatchCandidate};
+#[cfg(test)]
+use crate::match_ir::{NormalizedMatches, normalize_owned_matches_with_budget};
+#[cfg(test)]
+use crate::resource::MemoryBudget;
+use crate::resource::{BudgetedVec, ResourceContext};
 use crate::v3::compression_stats_from_header;
 
 const SPOOL_CHUNK: usize = 64 * 1024;
@@ -66,27 +70,34 @@ impl StageOutput {
 /// One reusable independently reopened input handle. Hashing and literal passes
 /// explicitly seek; their logical positions cannot interfere. Buffer is fixed.
 struct BoundedInput<'a> {
+    #[cfg(test)]
+    spool: &'a InputSpool,
     file: File,
     _handle: crate::offload::session::ResourceLease,
     _memory: crate::resource::Reservation,
     session: &'a crate::offload::session::CompressionSession,
-    buffer: [u8; SPOOL_CHUNK],
+    buffer: BudgetedVec<u8>,
 }
 impl<'a> BoundedInput<'a> {
     fn new(
-        spool: &InputSpool,
+        spool: &'a InputSpool,
         session: &'a crate::offload::session::CompressionSession,
     ) -> Result<Self> {
         let handle = session.acquire_handles(1)?;
-        let memory = session.memory().reserve(SPOOL_CHUNK as u64 + 4096)?;
+        let memory = session.memory().reserve(4096)?;
+        let count = (session.memory().limit() / 32).clamp(1024, SPOOL_CHUNK as u64) as usize;
+        let mut buffer = BudgetedVec::with_capacity(count, session.memory())?;
+        buffer.resize(count, 0)?;
         session.checkpoint(crate::offload::session::Operation::Open)?;
         let file = spool._temp.reopen().map_err(Error::temp_storage)?;
         Ok(Self {
+            #[cfg(test)]
+            spool,
             file,
             _handle: handle,
             _memory: memory,
             session,
-            buffer: [0; SPOOL_CHUNK],
+            buffer,
         })
     }
     fn range(
@@ -97,6 +108,8 @@ impl<'a> BoundedInput<'a> {
         mut consume: impl FnMut(&[u8]) -> Result<()>,
     ) -> Result<()> {
         use crate::offload::session::Operation;
+        #[cfg(test)]
+        crate::codec::test_mutate_input_during_staging(self.spool)?;
         let mut permit = self.session.reserve_io(u128::from(len))?;
         self.session.checkpoint(Operation::Seek)?;
         self.file
@@ -104,9 +117,9 @@ impl<'a> BoundedInput<'a> {
             .map_err(Error::temp_storage)?;
         let mut remaining = len;
         while remaining != 0 {
-            let wanted = remaining.min(SPOOL_CHUNK as u64) as usize;
+            let wanted = remaining.min(self.buffer.len() as u64) as usize;
             self.session.checkpoint(Operation::Read)?;
-            let n = match self.file.read(&mut self.buffer[..wanted]) {
+            let n = match self.file.read(&mut self.buffer.as_mut_slice()[..wanted]) {
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                 r => r.map_err(|e| Error::map_eof(e, context))?,
             };
@@ -114,7 +127,7 @@ impl<'a> BoundedInput<'a> {
                 return Err(Error::truncated(context));
             }
             permit.consume(n as u64)?;
-            consume(&self.buffer[..n])?;
+            consume(&self.buffer.as_slice()[..n])?;
             remaining -= n as u64;
         }
         Ok(())
@@ -222,6 +235,9 @@ fn stage_selected_inner(
         let before = out.spool.len;
         if let Some(cursor) = source_cursor.as_mut() {
             cursor.seek_row(source_position)?;
+            if cursor.position() != source_position {
+                return Err(Error::corrupt_index("source cursor seek mismatch"));
+            }
             let first = source_position;
             let mut limit = first;
             while let Some(item) = cursor.next()? {
@@ -437,13 +453,25 @@ where
     W: Write,
     I: IntoIterator<Item = MatchCandidate>,
 {
+    crate::codec::compress_with_candidates_with_context(input, output, config, candidates, context)
+}
+
+#[cfg(test)]
+pub(crate) fn compress_reference<R: Read, W: Write, I: IntoIterator<Item = MatchCandidate>>(
+    input: R,
+    output: W,
+    config: &CompressionConfig,
+    candidates: I,
+) -> Result<CompressionStats> {
     config.validate()?;
-    let spool = spool_input(input, &config.resources, context)?;
+    let context = ResourceContext::with_resources(&config.resources)?;
+    let spool = spool_input(input, &config.resources, &context)?;
     let candidates = crate::candidate_validation::collect_candidates(candidates, &context.memory)?;
-    compress_spooled_with_candidates(spool, config, candidates, context, output)
+    compress_spooled_with_candidates(spool, config, candidates, &context, output)
 }
 
 /// Encode a v3 archive from an already-spooled input and collected candidates.
+#[cfg(test)]
 pub(crate) fn compress_spooled_with_candidates<W: Write>(
     spool: InputSpool,
     config: &CompressionConfig,
@@ -529,6 +557,7 @@ fn validate_selected_matches(
     Ok(())
 }
 
+#[cfg(test)]
 fn encode_archive(
     spool: &InputSpool,
     config: &CompressionConfig,
@@ -695,6 +724,7 @@ fn encode_archive(
     )
 }
 
+#[cfg(test)]
 fn source_ordered_indices(matches: &[Match], memory: &MemoryBudget) -> Result<BudgetedVec<usize>> {
     let mut indices = BudgetedVec::with_capacity(matches.len(), memory)?;
     for index in 0..matches.len() {
@@ -708,18 +738,21 @@ fn source_ordered_indices(matches: &[Match], memory: &MemoryBudget) -> Result<Bu
     Ok(indices)
 }
 
+#[cfg(test)]
 fn clone_spool_file(spool: &InputSpool) -> Result<File> {
     // `File::try_clone` duplicates the descriptor and shares the kernel
     // offset. Reopen so literal copies cannot disturb plaintext hashing.
     spool._temp.reopen().map_err(Error::temp_storage)
 }
 
+#[cfg(test)]
 fn write_hashed(staged: &mut TempSpool, digest: &mut GlobalDigest, bytes: &[u8]) -> Result<()> {
     staged.append(bytes)?;
     digest.update(bytes);
     Ok(())
 }
 
+#[cfg(test)]
 fn write_uleb_hashed(
     staged: &mut TempSpool,
     digest: &mut GlobalDigest,
@@ -746,6 +779,7 @@ fn uleb_encoded_len(value: u64) -> Result<u64> {
     Ok(len)
 }
 
+#[cfg(test)]
 fn compact_index_len(matches: &[Match]) -> Result<u64> {
     let count = u64::try_from(matches.len())
         .map_err(|_| Error::invalid_match("match count exceeds MAX_WIRE"))?;
@@ -786,6 +820,7 @@ fn compact_index_len(matches: &[Match]) -> Result<u64> {
     Ok(len)
 }
 
+#[cfg(test)]
 fn write_compact_index(
     matches: &[Match],
     staged: &mut TempSpool,
@@ -830,6 +865,7 @@ fn write_compact_index(
     Ok(written)
 }
 
+#[cfg(test)]
 fn hash_block_plaintext(
     file: &mut File,
     start: u64,
@@ -854,6 +890,7 @@ fn hash_block_plaintext(
     Ok(crc.finalize_le())
 }
 
+#[cfg(test)]
 fn emit_literals(
     spool: &InputSpool,
     start: u64,
@@ -867,6 +904,7 @@ fn emit_literals(
     })
 }
 
+#[cfg(test)]
 fn for_each_literal_range(
     start: u64,
     end: u64,
@@ -894,6 +932,7 @@ fn for_each_literal_range(
     Ok(())
 }
 
+#[cfg(test)]
 fn copy_spool_range_hashed(
     spool: &InputSpool,
     start: u64,
@@ -921,6 +960,7 @@ fn copy_spool_range_hashed(
     Ok(())
 }
 
+#[cfg(test)]
 fn emit_future_registers(
     start: u64,
     end: u64,
@@ -969,6 +1009,7 @@ fn emit_future_registers(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn emit_io_operations(
     spool: &InputSpool,
     start: u64,
@@ -1200,8 +1241,8 @@ mod tests {
         }
     }
 
-    fn selected_fixture<'a>(
-        s: &'a crate::offload::session::CompressionSession,
+    fn selected_fixture(
+        s: &crate::offload::session::CompressionSession,
     ) -> crate::offload::matches::DiskSelectedStore {
         use crate::offload::contracts::{SelectedBuilder, SelectedSummary};
         let mut b = crate::offload::matches::DiskSelectedBuilder::new(2048, 32, s).unwrap();
@@ -1323,7 +1364,7 @@ mod tests {
     ) -> (Vec<u8>, CompressionStats) {
         let mut archive = Vec::new();
         let stats =
-            compress_with_candidates(Cursor::new(input), &mut archive, config, candidates).unwrap();
+            compress_reference(Cursor::new(input), &mut archive, config, candidates).unwrap();
         (archive, stats)
     }
 

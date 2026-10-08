@@ -197,6 +197,7 @@ pub(crate) fn find_matches_m0_spooled_with_parameters_into(
 /// including rows the sink may suppress.  This is deliberately separate from
 /// the public `BudgetedVec` adapter: the codec path can use the private paged
 /// source index and an external candidate sink without changing enumeration.
+#[allow(clippy::too_many_arguments)] // Shared exact core with explicit index/sink/resource ownership.
 pub(crate) fn emit_matches_m0_spooled(
     spool: &InputSpool,
     parameters: &M0Parameters,
@@ -321,10 +322,10 @@ fn find_matches_m0_spooled_with_parameters_emitter_and_index(
                     .ok_or_else(|| Error::invalid_match("m0 representative ordinal overflows"))?;
                 pending_representative = None;
             }
-            if !next_region
+            if next_region
                 .checked_mul(region)
                 .and_then(|start| start.checked_add(region).map(|end| (start, end)))
-                .is_some_and(|(_, end)| end.min(eligible_starts) <= target)
+                .is_none_or(|(_, end)| end.min(eligible_starts) > target)
             {
                 break;
             }

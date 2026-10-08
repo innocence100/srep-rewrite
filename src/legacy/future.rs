@@ -20,10 +20,12 @@ const SIZE_RECORD_SIZE: u64 = 8;
 const RUN_RECORDS: u64 = 256;
 const MAX_MERGE_LEVELS: usize = 57;
 
+#[allow(dead_code)]
 const fn initial_runs_for_fragments(fragments: u64) -> u64 {
     fragments.div_ceil(RUN_RECORDS)
 }
 
+#[allow(dead_code)]
 const fn merge_levels_for_initial_runs(runs: u64) -> usize {
     let mut remaining = runs;
     let mut levels = 0;
@@ -34,8 +36,13 @@ const fn merge_levels_for_initial_runs(runs: u64) -> usize {
     levels
 }
 
+// The legacy fragment stream is bounded by MAX_UNCOMPRESSED / the fixed run
+// size. Keep this as an evaluated capacity proof rather than a tautological
+// assertion: changing either the wire limit or run size must force this array
+// bound to be revisited at compile time.
 const _: () = assert!(
-    merge_levels_for_initial_runs(initial_runs_for_fragments(u64::MAX)) == MAX_MERGE_LEVELS
+    merge_levels_for_initial_runs(initial_runs_for_fragments(crate::config::MAX_UNCOMPRESSED))
+        <= MAX_MERGE_LEVELS
 );
 
 #[derive(Clone, Copy)]

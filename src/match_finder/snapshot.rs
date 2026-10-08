@@ -18,6 +18,7 @@ thread_local! {
     static TEST_SNAPSHOT_MEMORY_BUDGET: Cell<Option<u64>> = const { Cell::new(None) };
     static TEST_DENY_LCE: Cell<u8> = const { Cell::new(0) };
     static TEST_LAST_STATE: Cell<Option<TestSnapshotState>> = const { Cell::new(None) };
+    static TEST_DENIALS: Cell<u64> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -88,6 +89,14 @@ pub(crate) fn test_deny_lces(forward: bool, reverse: bool) -> TestLceDenialGuard
 pub(crate) fn test_last_snapshot_state() -> Option<TestSnapshotState> {
     TEST_LAST_STATE.with(Cell::get)
 }
+#[cfg(test)]
+pub(crate) fn test_denials() -> u64 {
+    TEST_DENIALS.with(Cell::get)
+}
+#[cfg(test)]
+pub(crate) fn reset_test_denials() {
+    TEST_DENIALS.with(|v| v.set(0));
+}
 
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -157,6 +166,8 @@ impl InputSnapshot {
                 }
             };
             if spool.len > limit {
+                #[cfg(test)]
+                TEST_DENIALS.with(|v| v.set(v.get().saturating_add(1)));
                 return Ok(None);
             }
             let length = match usize::try_from(spool.len) {
@@ -166,6 +177,8 @@ impl InputSnapshot {
             let mut bytes = match BudgetedVec::with_capacity(length, &context.memory) {
                 Ok(bytes) => bytes,
                 Err(error) if error.kind() == crate::error::ErrorKind::MemoryBudgetExceeded => {
+                    #[cfg(test)]
+                    TEST_DENIALS.with(|v| v.set(v.get().saturating_add(1)));
                     return Ok(None);
                 }
                 Err(error) => return Err(error),
@@ -410,7 +423,7 @@ fn prefix_tables(
 }
 
 impl ExactLce {
-    fn try_new(bytes: &[u8], context: &ResourceContext) -> Result<Self> {
+    pub(crate) fn try_new(bytes: &[u8], context: &ResourceContext) -> Result<Self> {
         let length = bytes.len();
         if length == 0 {
             return Ok(Self {
@@ -533,25 +546,27 @@ impl ExactLce {
         })
     }
 
-    fn query(&self, first: usize, second: usize, limit: usize) -> usize {
-        if first >= self.inverse.len() || second >= self.inverse.len() {
+    pub(crate) fn query(&self, first: usize, second: usize, limit: usize) -> usize {
+        let inverse = self.inverse.as_slice();
+        let tree = self.tree.as_slice();
+        if first >= inverse.len() || second >= inverse.len() {
             return 0;
         }
         if first == second {
             return limit;
         }
-        let lower = (self.inverse[first] as usize).min(self.inverse[second] as usize);
-        let upper = (self.inverse[first] as usize).max(self.inverse[second] as usize);
+        let lower = (inverse[first] as usize).min(inverse[second] as usize);
+        let upper = (inverse[first] as usize).max(inverse[second] as usize);
         let mut left = self.tree_base + lower + 1;
         let mut right = self.tree_base + upper;
         let mut result = u32::MAX;
         while left <= right {
             if left % 2 == 1 {
-                result = result.min(self.tree[left]);
+                result = result.min(tree[left]);
                 left += 1;
             }
             if right.is_multiple_of(2) {
-                result = result.min(self.tree[right]);
+                result = result.min(tree[right]);
                 right -= 1;
             }
             left /= 2;

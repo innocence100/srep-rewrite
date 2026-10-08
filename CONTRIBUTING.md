@@ -34,7 +34,7 @@ Before submitting code changes, use the repository's applicable formatting,
 lint, test, documentation, and release-smoke checks. Native Windows and macOS
 compile, link, and test evidence must come from GitHub Actions on the relevant
 native runners. A Linux cross-compilation check is only a compile hint and is
-not Windows or macOS verification. The 0.1.1 candidate targets Linux x86_64
+not Windows or macOS verification. The 0.2.0 candidate targets Linux x86_64
 glibc, Windows x86_64 MSVC, and macOS ARM64. Measure runtime requirements on
 each actual package; the historical 0.1.0 GLIBC_2.30 observation does not prove
 the compatibility of a new build.
@@ -44,7 +44,7 @@ rewrite shared artifacts. In particular, verify that examples use the current
 CLI names, that `CHANGELOG.md` keeps the current work under `Unreleased` until
 publication (historical notes must remain labeled as history, not as current
 release claims), and that the incomplete 72-row fidelity comparison is not
-claimed as a pass or as fixed in 0.1.1. The historical 0.1.0 default-m3 round trip is recorded
+claimed as a pass. The historical 0.1.0 default-m3 round trip is recorded
 in the release notes as a correctness check; do not turn those raw timings
 into a performance claim.
 
@@ -71,7 +71,7 @@ contain `srep`, `LICENSE`, `THIRD_PARTY.md`, `THIRD_PARTY.audit`, `README.md`,
 (Windows uses `srep.exe`); dependency notices are collected by the release
 integration owner. The SPDX map in `THIRD_PARTY.audit` is an attribution
 checklist, not a certification that every legal requirement is satisfied.
-For 0.1.1, all six native jobs (three OSes × stable/MSRV) and three extracted
+For 0.2.0, all six native jobs (three OSes × stable/MSRV) and three extracted
 package smoke tests are required. They validate release-profile tests without
 changing timing assertions. The separate `ci.yml` debug-profile checks remain
 unchanged; a failure there must be reported, not relabeled as a release-profile

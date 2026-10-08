@@ -183,7 +183,10 @@ impl SourceOrderBuilder<DiskSelectedStore> for DiskSourceOrderBuilder {
         session: &CompressionSession,
     ) -> Result<Self::Store> {
         selected.verify(session)?;
-        let chunk = BudgetedVec::with_capacity(self.chunk_records, session.memory())?;
+        let count = self
+            .chunk_records
+            .min((session.memory().limit() / 1024).max(1) as usize);
+        let chunk = BudgetedVec::with_capacity(count, session.memory())?;
         let mut sort = ExternalSorter::new(
             session,
             chunk,

@@ -6,6 +6,73 @@ use crate::error::{Error, Result};
 use crate::resource::BudgetedVec;
 use crate::resource::Reservation;
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TestSortObservation {
+    pub(crate) interval_leaf_runs: u64,
+    pub(crate) interval_merges: u64,
+}
+#[cfg(test)]
+thread_local! {
+    static TEST_SORT_OBSERVATION: std::cell::Cell<TestSortObservation> =
+        const { std::cell::Cell::new(TestSortObservation { interval_leaf_runs: 0, interval_merges: 0 }) };
+    static TEST_SORT_CHUNK: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+#[cfg(test)]
+pub(crate) struct TestSortScope {
+    previous_chunk: Option<usize>,
+    previous_observation: TestSortObservation,
+}
+#[cfg(test)]
+impl TestSortScope {
+    pub(crate) fn new(chunk: usize) -> Self {
+        let previous_chunk = TEST_SORT_CHUNK.with(|v| v.replace(Some(chunk)));
+        let previous_observation = TEST_SORT_OBSERVATION.with(|v| {
+            let old = v.get();
+            v.set(TestSortObservation::default());
+            old
+        });
+        Self {
+            previous_chunk,
+            previous_observation,
+        }
+    }
+    pub(crate) fn observation(&self) -> TestSortObservation {
+        TEST_SORT_OBSERVATION.with(std::cell::Cell::get)
+    }
+}
+#[cfg(test)]
+impl Drop for TestSortScope {
+    fn drop(&mut self) {
+        TEST_SORT_CHUNK.with(|v| v.set(self.previous_chunk));
+        TEST_SORT_OBSERVATION.with(|v| v.set(self.previous_observation));
+    }
+}
+#[cfg(test)]
+pub(crate) fn test_chunk_override() -> Option<usize> {
+    TEST_SORT_CHUNK.with(std::cell::Cell::get)
+}
+#[cfg(test)]
+fn note_leaf<T>() {
+    if std::any::type_name::<T>().contains("IntervalRow") {
+        TEST_SORT_OBSERVATION.with(|v| {
+            let mut o = v.get();
+            o.interval_leaf_runs += 1;
+            v.set(o);
+        });
+    }
+}
+#[cfg(test)]
+fn note_merge<T>() {
+    if std::any::type_name::<T>().contains("IntervalRow") {
+        TEST_SORT_OBSERVATION.with(|v| {
+            let mut o = v.get();
+            o.interval_merges += 1;
+            v.set(o);
+        });
+    }
+}
+
 const LEVELS: usize = 64;
 
 /// V1/L1 transform seam: callers supply an already charged fixed-capacity chunk.
@@ -70,6 +137,8 @@ impl<'a, T: FixedRecord> ExternalSorter<'a, T> {
             builder.append(row)?;
         }
         let n = self.chunk.len() as u64;
+        #[cfg(test)]
+        note_leaf::<T>();
         self.carry.insert(
             Run {
                 store: builder.finish()?,
@@ -91,6 +160,20 @@ impl<'a, T: FixedRecord> ExternalSorter<'a, T> {
             Some(s) => Ok(s),
             None => TypedTableBuilder::<T>::new(self.session, self.input_len)?.finish(),
         }
+    }
+    /// Test hook: flush the pending in-memory chunk as a sealed leaf run
+    /// without finishing the sorter. Used to force a genuine run boundary so
+    /// a later reintroduction exercises the merge path.
+    #[cfg(test)]
+    pub(crate) fn push_pending_as_run(&mut self) -> Result<()> {
+        if self.failed {
+            return Err(Error::temp_storage_context("failed sorter"));
+        }
+        let result = self.flush();
+        if result.is_err() {
+            self.failed = true;
+        }
+        result
     }
 }
 pub(crate) struct Run<T: FixedRecord> {
@@ -204,6 +287,8 @@ fn merge<T: FixedRecord>(
     s: &CompressionSession,
     reduce: fn(&T, &T) -> bool,
 ) -> Result<Run<T>> {
+    #[cfg(test)]
+    note_merge::<T>();
     left.store.check_session(s)?;
     right.store.check_session(s)?;
     if left.store.input_len() != right.store.input_len() {

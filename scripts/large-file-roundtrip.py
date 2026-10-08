@@ -112,6 +112,7 @@ def default_argv(
     *paths: Path,
     temp_dir: Path | None,
     memory: str | None,
+    temp_limit: str | None = None,
     extra: list[str] | None = None,
 ) -> list[str]:
     argv = [str(binary), command]
@@ -122,6 +123,8 @@ def default_argv(
             argv.extend(["--temp-dir", str(temp_dir)])
         if memory is not None:
             argv.extend(["--memory", memory])
+        if temp_limit is not None:
+            argv.extend(["--temp-limit", temp_limit])
     argv.extend(str(path) for path in paths)
     forbidden = {"-m", "-m0", "-m1", "-m2", "-m3", "-m4", "-m5", "--method", "--layout", "--checksum"}
     for item in argv[2:]:
@@ -220,6 +223,7 @@ def roundtrip(
     size: int,
     temp_dir: Path | None,
     memory: str | None,
+    temp_limit: str | None = None,
     keep_input: bool,
 ) -> dict[str, Any]:
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -280,6 +284,8 @@ def roundtrip(
                 "memory_flag": memory,
                 "memory_default_preferred_bytes": 256 * MIB,
                 "memory_override_logged": memory is not None,
+                "temp_limit_flag": temp_limit,
+                "temp_limit_override_logged": temp_limit is not None,
             },
         }
         if extra:
@@ -296,6 +302,7 @@ def roundtrip(
         archive_path,
         temp_dir=temp_dir,
         memory=memory,
+        temp_limit=temp_limit,
     )
     compress = run_step("compress", compress_argv, log_dir, env=env)
     steps.append(compress)
@@ -338,6 +345,7 @@ def roundtrip(
         output_path,
         temp_dir=temp_dir,
         memory=memory,
+        temp_limit=temp_limit,
     )
     decompress = run_step("decompress", decompress_argv, log_dir, env=env)
     steps.append(decompress)
@@ -402,6 +410,8 @@ def roundtrip(
             "memory_flag": memory,
             "memory_default_preferred_bytes": 256 * MIB,
             "memory_override_logged": memory is not None,
+            "temp_limit_flag": temp_limit,
+            "temp_limit_override_logged": temp_limit is not None,
             "output_dest": str(output_path),
         },
         "steps": [
@@ -439,6 +449,11 @@ def main(argv: list[str] | None = None) -> int:
         "--memory",
         default=None,
         help="optional --memory SIZE passed through and logged; omit to keep the 256 MiB default",
+    )
+    parser.add_argument(
+        "--temp-limit",
+        default=None,
+        help="optional --temp-limit SIZE passed through and logged; omit to keep the 4 GiB default",
     )
     parser.add_argument("--keep-input", action="store_true")
     parser.add_argument(
@@ -491,6 +506,7 @@ def main(argv: list[str] | None = None) -> int:
             size=args.bytes,
             temp_dir=temp_dir,
             memory=args.memory,
+            temp_limit=args.temp_limit,
             keep_input=args.keep_input,
         )
     except SystemExit as error:

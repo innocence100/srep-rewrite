@@ -9,9 +9,9 @@
 use std::io::{Read, Seek, SeekFrom};
 
 use super::candidate_sink::CandidateStore;
-use super::contracts::{
-    CandidateRow, CandidateValidator, EnumerationComplete, RandomStore, RecordCursor, ReplayStore,
-};
+#[cfg(test)]
+use super::contracts::CandidateValidator;
+use super::contracts::{CandidateRow, EnumerationComplete, RandomStore, RecordCursor, ReplayStore};
 use super::session::{CompressionSession, Operation};
 use super::sort::ExternalSorter;
 use super::storage::{EndRow, IntervalRow, RecordPageCache, RecordTable};
@@ -21,6 +21,7 @@ use crate::match_ir::MatchCandidate;
 use crate::resource::BudgetedVec;
 
 const VALIDATION_BUFFER: usize = 4096;
+pub(super) mod m3;
 
 /// A sealed candidate stream.  External input deliberately has a separate
 /// constructor: it has no source-index completion token to counterfeit.
@@ -30,7 +31,7 @@ pub(crate) struct CandidateBatch {
 }
 
 impl CandidateBatch {
-    pub(super) fn from_external(
+    pub(crate) fn from_external(
         source: CandidateStore,
         input_len: u64,
         session: &CompressionSession,
@@ -139,6 +140,10 @@ impl ValidatedCandidates {
         }
         drop(cursor);
         let interval_store = intervals.finish()?;
+        session.profile(
+            "intervals_ready",
+            format_args!("U={} D={}", source.len(), interval_store.len()),
+        );
         drop(source);
 
         let chunk = fixed_sort_chunk::<EndRow>(session)?;
@@ -149,6 +154,7 @@ impl ValidatedCandidates {
         }
         let end_store = ends.finish()?;
         let count = end_store.len();
+        session.profile("ends_ready", format_args!("D={count}"));
         drop(interval_cursor);
         drop(interval_store);
         Ok(ScheduledCandidates {
@@ -161,17 +167,20 @@ impl ValidatedCandidates {
 
 /// Typed adapter used by the offload parent for ordinary external candidate
 /// rows.  It has no finder or source-index construction capability.
+#[cfg(test)]
 pub(crate) struct Validator<'a> {
     spool: &'a InputSpool,
     min_match: u64,
 }
 
+#[cfg(test)]
 impl<'a> Validator<'a> {
     pub(crate) fn new(spool: &'a InputSpool, min_match: u64) -> Self {
         Self { spool, min_match }
     }
 }
 
+#[cfg(test)]
 impl CandidateValidator<CandidateStore> for Validator<'_> {
     type Validated = ValidatedCandidates;
 
@@ -219,6 +228,7 @@ pub(crate) fn validate_batch(
         return Err(Error::corrupt_index("cross-session candidate batch"));
     }
     session.check_cancelled()?;
+    session.profile("validation_start", format_args!("U={}", batch.source.len()));
 
     // Sealing is not a proof that disk stayed unchanged. Verify the complete
     // envelope and append-side digest uncached, then ALL canonical keys, before
@@ -247,8 +257,14 @@ pub(crate) fn validate_batch(
     let mut actual = [0u8; VALIDATION_BUFFER];
     let mut period = [0u8; VALIDATION_BUFFER];
     let mut cursor = batch.source.cursor()?;
+    let mut validation_bytes = 0u128;
     while let Some(row) = cursor.next()? {
         session.check_cancelled()?;
+        if row.candidate.len > 25 {
+            validation_bytes = validation_bytes
+                .checked_add(u128::from(row.candidate.len))
+                .ok_or_else(|| Error::invalid_match("validation volume overflow"))?;
+        }
         validate_row(
             row.candidate,
             spool.len,
@@ -262,6 +278,10 @@ pub(crate) fn validate_batch(
     }
 
     drop(cursor);
+    session.profile(
+        "validation_done",
+        format_args!("U={} V={validation_bytes}", batch.source.len()),
+    );
     Ok(ValidatedCandidates {
         source: batch.source,
         input_len: spool.len,
@@ -272,7 +292,7 @@ pub(crate) fn validate_batch(
 fn fixed_sort_chunk<T: Copy>(session: &CompressionSession) -> Result<BudgetedVec<T>> {
     // Candidate validation intentionally uses a fixed, bounded chunk.  The
     // allocation is charged before any sorter file is opened.
-    let count = (session.memory().limit() / 64).clamp(1, 4096) as usize;
+    let count = (session.memory().limit() / 1024).clamp(1, 65536) as usize;
     BudgetedVec::with_capacity(count, session.memory())
 }
 

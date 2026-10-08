@@ -96,10 +96,30 @@ def test_cli_construction_never_overrides_defaults(mod) -> None:
     joined = " ".join(argv)
     assert argv[:2] == ["/tmp/srep", "compress"]
     assert "--temp-dir" in argv
+    assert "--temp-limit" not in argv
     assert "-m" not in argv
     assert "--method" not in joined
     assert "--layout" not in joined
     assert "--checksum" not in joined
+    with_limit = mod.default_argv(
+        Path("/tmp/srep"),
+        "compress",
+        Path("in"),
+        Path("out"),
+        temp_dir=Path("/tmp/srep-temp"),
+        memory="256MiB",
+        temp_limit="32GiB",
+    )
+    assert with_limit[with_limit.index("--memory") + 1] == "256MiB"
+    assert with_limit[with_limit.index("--temp-limit") + 1] == "32GiB"
+    assert "--temp-limit" not in mod.default_argv(
+        Path("/tmp/srep"),
+        "info",
+        Path("archive"),
+        temp_dir=None,
+        memory=None,
+        temp_limit="32GiB",
+    )
     try:
         mod.default_argv(
             Path("/tmp/srep"),
@@ -156,6 +176,8 @@ def test_tiny_roundtrip_with_stub_binary() -> None:
                 str(3 * 1024 * 1024),
                 "--allow-small",
                 "--keep-input",
+                "--temp-limit",
+                "8GiB",
             ],
             check=False,
             capture_output=True,
@@ -167,6 +189,11 @@ def test_tiny_roundtrip_with_stub_binary() -> None:
         assert '"state": "PASSED"' in payload
         assert "-m3" not in payload
         assert "--method" not in payload
+        parsed = json.loads(payload)
+        assert parsed["resource"]["temp_limit_flag"] == "8GiB"
+        assert parsed["resource"]["temp_limit_override_logged"] is True
+        compress_argv = parsed["cli"]["compress"]
+        assert compress_argv[compress_argv.index("--temp-limit") + 1] == "8GiB"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -3,6 +3,38 @@
 All notable changes to this project are documented here. Current maintenance
 work remains unreleased until independent review and native artifact validation.
 
+## 0.2.0 — Unreleased until publication
+
+**Status: source and tooling candidate; publication requires parent review and
+the native GitHub Actions run.** This document does not publish a release and
+does not alter existing tags or assets.
+
+- Bounded-memory offload path for internal generation. `--memory` is defined as
+  the managed compression working memory: input/output buffers, candidate
+  storage, indexes, sorting, WIS/match selection, caches, and their working
+  control state. File pathname processing, runtime and allocator overhead are
+  excluded, so it is not a hard cap on total process RSS.
+- File pathnames (configured `temp_dir`, resolved absolute parent, per-file
+  `PathBuf`/`TempPath`) do not consume the `--memory` working budget; a long
+  pathname cannot itself trigger a memory-policy rejection. Fixed control owners
+  (ledgers, cleanup registry slots, directory/per-file control) remain charged.
+- Native release workflow retargeted to `ci/native-release/v0.2.0` with version
+  default/fallback artifact `0.2.0`; CI runner allowance raised to 360 minutes
+  for all three jobs (the full suite exceeds 50 minutes plus Linux
+  debug/release runs).
+- Quality policy `majority-final-xz-v1` (explicit user revision): on the fixed
+  12-sample corpus a method passes when strictly more than half its complete
+  rows have a final-XZ stream strictly smaller than the frozen baseline (ties
+  do not win), with `coverage_geomean >= 0.95`, complete 72 rows and
+  round-trip integrity retained. The old `size_geomean <= 1.05` and per-row
+  `raw_size <= 1.10` limits are retained as diagnostics, not gates; the old
+  immutable FAIL report is preserved unchanged.
+- No algorithm, ratio, fidelity, or performance claim is made here. Local
+  Linux evidence is recorded (490-test suite green; 258 MiB round trip PASS;
+  real 72-row run resource-complete at 72/72 round trips; new-policy verdict
+  PASS, old-policy verdict FAIL preserved distinctly). Native
+  packaging/publication gates remain open until their evidence lands.
+
 ## Unreleased — 0.1.1 maintenance
 
 - Continued maintenance toward 0.1.1 without changing the NGv3 algorithm or

@@ -1,7 +1,7 @@
 # SREP-NG
 
 SREP-NG is a clean-room Rust implementation of the SuperREP preprocessor. In
-software release **0.1.1**, the current archive format is **SREP-NG v3
+software release **0.2.0**, the current archive format is **SREP-NG v3
 (NGv3)**. NGv3 is the format written by this project and the format read by
 default.
 
@@ -28,9 +28,9 @@ The current normative wire specification is [`docs/FORMAT-V3.md`](docs/FORMAT-V3
 they are not current NGv2 contracts. The frozen design remains relevant only
 where NGv3 explicitly inherits matching and resource semantics.
 
-## Install a 0.1.1 native release artifact
+## Install a 0.2.0 native release artifact
 
-Version 0.1.1 is a maintenance candidate. Publication requires independent
+Version 0.2.0 is a release candidate. Publication requires independent
 review and fresh native GitHub Actions evidence for Linux x86_64, Windows
 x86_64 MSVC, and macOS ARM64. Expected package names are below; their presence
 here does not mean they have been published. Exact target, source, compiler,
@@ -38,9 +38,9 @@ hash, and runtime details come
 from each package's `BUILD-PROVENANCE.json` and `NOTICES`.
 
 ```text
-srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
-srep-v0.1.1-x86_64-pc-windows-msvc.zip
-srep-v0.1.1-aarch64-apple-darwin.tar.gz
+srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz
+srep-v0.2.0-x86_64-pc-windows-msvc.zip
+srep-v0.2.0-aarch64-apple-darwin.tar.gz
 ```
 
 Each archive has one directory named after its basename without `.tar.gz` or
@@ -65,25 +65,25 @@ download before unpacking or running it:
 
 ```sh
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz
-cd srep-v0.1.1-x86_64-unknown-linux-gnu
+tar -xzf srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz
+cd srep-v0.2.0-x86_64-unknown-linux-gnu
 ./srep --version
 ./srep --help
 ```
 
-Windows PowerShell: run `Get-FileHash .\srep-v0.1.1-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
+Windows PowerShell: run `Get-FileHash .\srep-v0.2.0-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
 and compare with the matching `SHA256SUMS` entry before using `Expand-Archive`.
 In the extracted directory run `.\srep.exe --version` and `.\srep.exe --help`.
 This is an x86_64 MSVC package, not an ARM64 or MinGW package.
 
-On Apple Silicon macOS, run `shasum -a 256 srep-v0.1.1-aarch64-apple-darwin.tar.gz`
+On Apple Silicon macOS, run `shasum -a 256 srep-v0.2.0-aarch64-apple-darwin.tar.gz`
 and compare with the matching entry before unpacking with `tar -xzf`.
 In the extracted directory run `./srep --version` and `./srep --help`.
 The macOS package is ARM64, not Intel/universal. Packages are not publisher
 code-signed or notarized. macOS may require explicit approval in Privacy &
 Security after verification; do not disable Gatekeeper globally.
 
-New 0.1.1 runtime compatibility is unknown
+New 0.2.0 runtime compatibility is unknown
 until the native build completes. The published 0.1.0 tarball remains
 unchanged; its SHA-256 is
 `039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401`.
@@ -137,11 +137,18 @@ unsupported split-index error and does not open the path.
 ## Resources and operational cautions
 
 Matching and archive staging use bounded memory and may use temporary disk.
-The default m3 settings can require substantial resources on large or highly
-repetitive inputs. Plan free space for temporary files, and use the resource
-options shown by `./srep --help` (`--memory`, `--temp-dir`, and
-`--temp-limit`) when operating under a budget. A resource limit must fail
-explicitly; it must not silently weaken matching or change the format.
+`--memory SIZE` limits managed compression working memory: input/output
+buffers, candidate storage, indexes, sorting, WIS/match selection, caches, and
+their associated working control state. File pathname processing, runtime and
+allocator overhead are excluded; it is not a hard cap on total process RSS, and
+additional resident memory can come from those excluded categories. In
+particular, `--temp-dir` is a pathname location whose length does not consume
+the `--memory` working budget. The default m3 settings can require substantial
+resources on large or highly repetitive inputs. Plan free space for temporary
+files, and use the resource options shown by `./srep --help` (`--memory`,
+`--temp-dir`, and `--temp-limit`) when operating under a budget. A resource
+limit must fail explicitly; it must not silently weaken matching or change the
+format.
 
 For every archive, check the result before deleting or replacing the source:
 
@@ -160,14 +167,20 @@ does not require a sidecar index. `info` reports the archive's format,
 method, layout, checksum, and size/match metadata.
 
 This describes implemented interfaces, not a claim that NGv3 matches the
-historical compressor's byte output, ratio, or runtime. The prior integration
-handoff reports 12 completed rows of a 72-row comparison (12 samples times six
-methods), not a
-full-quality PASS. Sample 03 / m0 is incomplete because the default 256 MiB
-memory budget reached an out-of-memory condition. The planned 0.2 bounded-memory
-fix is not included here; no uniform skip or algorithm, ratio, or fidelity
-claim follows. Those historical raw fidelity logs are no longer present in the
-recreated workspace; this is a disclosed known limitation, not fresh evidence.
+historical compressor's byte output, ratio, or runtime. The 0.2.0 candidate
+adds a bounded-memory offload path (256 MiB managed working memory, pathnames
+and runtime excluded) and is **not yet released**: the real 72-row comparison
+completed 72/72 byte-identical round trips (resource SUCCESS). Quality is
+judged by the user-revised `majority-final-xz-v1` gate: all six methods pass a
+per-method strict majority of final-XZ streams strictly smaller than the frozen
+baseline on the fixed 12-sample corpus (ties do not win; m0 11/12, m1 10/12,
+m2 9/12, m3 12/12, m4 12/12, m5 11/12; coverage gate passes). Under the
+**previous** policy the same unchanged evidence read FAIL on four
+small-denominator rows; that old verdict is preserved distinctly — see
+`docs/evidence/v0.2.0-local-acceptance.md`. No universal large-file, uniform
+skip, algorithm, ratio, or fidelity claim follows. The prior integration
+handoff's 12-row comparison and the historical sample-03/m0 out-of-memory
+record remain as history, not fresh evidence.
 
 ## Evidence and release status
 
@@ -191,7 +204,7 @@ only `--temp-dir` was added. `info` reported `SREP-NG v3` / `m3` / `index` /
 `xxh3`. `test`, decompress, SHA-256, and `cmp` matched. This is a correctness
 round trip, not a ratio or performance claim. Artifact identity (source SHA,
 compiler, binary SHA-256) is recorded in package `NOTICES` and `SHA256SUMS`,
-not in this file. See [`docs/releases/v0.1.1.md`](docs/releases/v0.1.1.md),
+not in this file. See [`docs/releases/v0.2.0.md`](docs/releases/v0.2.0.md), [`docs/releases/v0.1.1.md`](docs/releases/v0.1.1.md),
 [`docs/releases/v0.1.0.md`](docs/releases/v0.1.0.md), and
 [`docs/acceptance-traceability.md`](docs/acceptance-traceability.md).
 

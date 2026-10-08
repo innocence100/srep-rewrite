@@ -46,6 +46,7 @@ pub(crate) trait RandomStore<T: Copy>: ReplayStore<T> {
 pub(crate) trait TableBuilder<T: Copy> {
     type Store: RandomStore<T>;
     fn append(&mut self, row: T) -> Result<u64>;
+    #[cfg(test)]
     fn read_committed(&mut self, index: u64) -> Result<T>;
     fn finish(self) -> Result<Self::Store>;
 }
@@ -77,6 +78,7 @@ pub(crate) trait SourceOrderBuilder<S: SelectedStore + ?Sized> {
 // in offload::normalize. In particular there is NO constructible "validated"
 // wrapper here. This associated type lets consumers compile against an opaque
 // outcome without granting finders a validation constructor.
+#[cfg(test)]
 pub(crate) trait CandidateValidator<S: ReplayStore<CandidateRow>> {
     type Validated;
     fn validate(self, source: S, session: &CompressionSession) -> Result<Self::Validated>;
@@ -96,12 +98,8 @@ pub(crate) trait SourceVerifier {
 /// I1 owns the concrete index; B0 wires its factory only once I1 is reviewed.
 /// The factory result goes to the offload-parent barrier constructor, never to
 /// a finder-controlled success-token constructor.
-pub(crate) trait CodecSourceIndex:
-    crate::candidate_index::CandidateIndex + SourceVerifier
-{
-}
 pub(crate) trait CodecSourceIndexFactory {
-    type Index: CodecSourceIndex;
+    type Index: crate::candidate_index::CandidateIndex + SourceVerifier;
     fn create(&self, session: &CompressionSession) -> Result<Self::Index>;
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,13 +205,16 @@ pub(crate) struct EnumerationSummary {
 /// S1 owns codecs and page checksums. This identity is required on *every* read;
 /// no global mutable page-valid flag is part of the contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg(test)]
 pub(crate) struct StoreIdentity {
     pub(crate) session: SessionId,
     pub(crate) generation: u64,
 }
 pub(crate) trait VerifiedSourcePages {
+    #[cfg(test)]
     fn identity(&self) -> StoreIdentity;
     fn entry_count(&self) -> u64;
+    #[cfg(test)]
     fn read_entry(&mut self, index: u64) -> Result<crate::candidate_index::IndexEntry>;
     fn verify_uncached(&mut self) -> Result<()>;
 }

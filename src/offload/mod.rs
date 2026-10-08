@@ -15,6 +15,17 @@ pub(crate) mod sort;
 pub(crate) mod storage;
 
 #[cfg(test)]
+thread_local! { static TEST_PHASE_COUNTS: std::cell::Cell<(u64,u64)> = const { std::cell::Cell::new((0,0)) }; }
+#[cfg(test)]
+pub(crate) fn test_phase_counts_reset() {
+    TEST_PHASE_COUNTS.with(|v| v.set((0, 0)));
+}
+#[cfg(test)]
+pub(crate) fn test_phase_counts() -> (u64, u64) {
+    TEST_PHASE_COUNTS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
 mod tests;
 
 /// Generate complete raw semantics into an independently bounded sink. Base
@@ -25,19 +36,37 @@ pub(crate) fn enumerate_spooled(
     session: &session::CompressionSession,
     sink: &mut dyn contracts::CandidateSink,
 ) -> crate::Result<contracts::EnumerationSummary> {
+    enumerate_spooled_observed(spool, config, session, sink, None)
+}
+
+trait PhaseObserver {
+    fn begin(&mut self, phase: u8, method: u8, start: u64) -> crate::Result<()>;
+    fn end(&mut self, phase: u8, method: u8, start: u64, next: u64) -> crate::Result<()>;
+}
+fn enumerate_spooled_observed(
+    spool: &crate::codec::InputSpool,
+    config: &crate::config::CompressionConfig,
+    session: &session::CompressionSession,
+    sink: &mut dyn contracts::CandidateSink,
+    mut observer: Option<&mut dyn PhaseObserver>,
+) -> crate::Result<contracts::EnumerationSummary> {
     use crate::config::Method;
     use crate::match_finder::{cdc, fixed, m0, m5};
+    use contracts::CodecSourceIndexFactory;
     use contracts::{EnumerationRequirement, Provenance, SourceBarrier, SourcePhase};
     config.validate()?;
     session.check_cancelled()?;
     let context = session.finder_context();
     let requirement = EnumerationRequirement::new(session, config.rep_overlay.is_some());
     let mut base = SourceBarrier::new(
-        crate::candidate_index::new_codec_candidate_index(session)?,
+        crate::candidate_index::CodecPagedIndexFactory::new(session).create(session)?,
         session,
         SourcePhase::Base,
     );
     let provenance = Provenance::new(config.method.wire_id(), 0)?;
+    if let Some(observer) = observer.as_deref_mut() {
+        observer.begin(0, config.method.wire_id(), 0)?;
+    }
     let result = match config.method {
         Method::M0Rep => m0::emit_matches_m0_spooled(
             spool,
@@ -99,17 +128,32 @@ pub(crate) fn enumerate_spooled(
         ),
     };
     let mut next = result?;
+    // Phase counters record ACTUAL qualifying emissions per phase (checked
+    // nextOrdinal - start), not phase invocations: a phase that emits nothing
+    // contributes zero. Invocation counting, if wanted, stays separate.
+    #[cfg(test)]
+    TEST_PHASE_COUNTS.with(|v| {
+        let (base, overlay) = v.get();
+        v.set((base.saturating_add(next), overlay));
+    });
     let base_token = base.finish(session)?;
+    if let Some(observer) = observer.as_deref_mut() {
+        observer.end(0, config.method.wire_id(), 0, next)?;
+    }
     let overlay_token = if let Some(overlay) = &config.rep_overlay {
         let distance = match config.max_distance {
             Some(n) if n != 0 => n.min(overlay.distance),
             _ => overlay.distance,
         };
         let mut index = SourceBarrier::new(
-            crate::candidate_index::new_codec_candidate_index(session)?,
+            crate::candidate_index::CodecPagedIndexFactory::new(session).create(session)?,
             session,
             SourcePhase::Overlay,
         );
+        let start = next;
+        if let Some(observer) = observer.as_deref_mut() {
+            observer.begin(1, 0, start)?;
+        }
         next = m0::emit_matches_m0_spooled(
             spool,
             &m0::M0Parameters {
@@ -124,7 +168,16 @@ pub(crate) fn enumerate_spooled(
             sink,
             Provenance::new(0, 1)?,
         )?;
-        Some(index.finish(session)?)
+        #[cfg(test)]
+        TEST_PHASE_COUNTS.with(|v| {
+            let (base, overlay) = v.get();
+            v.set((base, overlay.saturating_add(next.saturating_sub(start))));
+        });
+        let token = index.finish(session)?;
+        if let Some(observer) = observer {
+            observer.end(1, 0, start, next)?;
+        }
+        Some(token)
     } else {
         None
     };
@@ -145,12 +198,74 @@ pub(crate) fn generate_batch(
     let mut sink =
         candidate_sink::ExternalCandidateSink::with_input_len(session, spool.len, usize::MAX)?;
     let enumeration = enumerate_spooled(spool, config, session, &mut sink)?;
+    if enumeration.next_ordinal != enumeration.qualifying_count {
+        return Err(crate::Error::corrupt_index("enumeration counters disagree"));
+    }
     normalize::CandidateBatch::from_enumerated(
         sink.finish()?,
         enumeration.source_integrity,
         spool.len,
         session,
     )
+}
+
+/// Only ordinary generated m3 calls this. External rows retain canonical V1.
+pub(crate) fn prepare_m3_schedule_input(
+    spool: &crate::codec::InputSpool,
+    config: &crate::config::CompressionConfig,
+    s: &session::CompressionSession,
+) -> crate::Result<normalize::ScheduledCandidates> {
+    use normalize::m3::{EpochSink, Pass1, Pass2};
+    use std::cell::RefCell;
+    struct Rows<'a, T>(&'a RefCell<T>);
+    impl<T: EpochSink> contracts::CandidateSink for Rows<'_, T> {
+        fn emit(&mut self, r: contracts::CandidateRow) -> crate::Result<()> {
+            self.0.borrow_mut().emit(r)
+        }
+    }
+    struct Phases<'a, T>(&'a RefCell<T>);
+    impl<T: EpochSink> PhaseObserver for Phases<'_, T> {
+        fn begin(&mut self, p: u8, m: u8, start: u64) -> crate::Result<()> {
+            self.0.borrow_mut().begin(p, m, start)
+        }
+        fn end(&mut self, p: u8, m: u8, start: u64, next: u64) -> crate::Result<()> {
+            self.0.borrow_mut().end(p, m, start, next)
+        }
+    }
+    let result = (|| {
+        config.validate()?;
+        if config.method != crate::config::Method::M3FixedDigest {
+            return Err(crate::Error::invalid_config("m3 replay routing mismatch"));
+        }
+        s.m3_transition(0, 1)?;
+        let epoch = s.next_generation()?;
+        let first = RefCell::new(Pass1::new(spool, config, s, epoch)?);
+        let summary = enumerate_spooled_observed(
+            spool,
+            config,
+            s,
+            &mut Rows(&first),
+            Some(&mut Phases(&first)),
+        )?;
+        let certificate = first.into_inner().finish(summary)?;
+        s.m3_transition(1, 2)?;
+        let second = RefCell::new(Pass2::new(certificate, spool, config, s, epoch)?);
+        s.m3_transition(2, 3)?;
+        let summary = enumerate_spooled_observed(
+            spool,
+            config,
+            s,
+            &mut Rows(&second),
+            Some(&mut Phases(&second)),
+        )?;
+        let input = second.into_inner().finish(summary)?;
+        s.m3_transition(3, 4)?;
+        Ok(input)
+    })();
+    if result.is_err() {
+        s.source_failed();
+    }
+    result
 }
 
 #[cfg(test)]
@@ -168,6 +283,83 @@ mod generation_tests {
         Method::M4Reread,
         Method::M5Exhaustive,
     ];
+    #[test]
+    #[ignore = "manual sample03 enumeration-volume diagnostic; not an archive or validation bypass"]
+    fn profile_sample03_m3_intervals_only() {
+        use contracts::CandidateSink;
+        use storage::IntervalRow;
+        fn bytes(n: usize, seed: u64) -> Vec<u8> {
+            let mut x = seed ^ 0x9E3779B97F4A7C15;
+            (0..n)
+                .map(|_| {
+                    x = x
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    (x >> 32) as u8
+                })
+                .collect()
+        }
+        let block = bytes(32768, 16642);
+        let source = block.repeat(4);
+        let mut shifted = source[..65536 - 911].to_vec();
+        shifted.extend_from_slice(b"INSERTED-REGION-v2\0");
+        shifted.extend(bytes(1237, 16643));
+        shifted.extend_from_slice(&source[65536..]);
+        let mut data = source.clone();
+        data.extend(shifted);
+        data.extend(source);
+        data.resize(524288, 0);
+        let mut cfg = CompressionConfig::for_method(Method::M3FixedDigest);
+        cfg.block_size = 8192;
+        cfg.resources.temp_limit = 256 * 1024 * 1024;
+        let ctx = ResourceContext::with_resources(&cfg.resources).unwrap();
+        let spool = crate::codec::spool_input(data.as_slice(), &cfg.resources, &ctx).unwrap();
+        let session = session::CompressionSession::new(
+            &ctx,
+            &cfg.resources,
+            session::OffloadPolicy::default(),
+        )
+        .unwrap();
+        struct Count<'a> {
+            sort: sort::ExternalSorter<'a, IntervalRow>,
+            emitted: u64,
+            volume: u128,
+        }
+        impl CandidateSink for Count<'_> {
+            fn emit(&mut self, r: CandidateRow) -> crate::Result<()> {
+                self.emitted += 1;
+                self.volume += u128::from(r.candidate.len);
+                self.sort.push(IntervalRow(r))
+            }
+        }
+        let chunk = crate::resource::BudgetedVec::with_capacity(65536, session.memory()).unwrap();
+        let mut sink = Count {
+            sort: sort::ExternalSorter::new(
+                &session,
+                chunk,
+                spool.len,
+                |a: &IntervalRow, b: &IntervalRow| {
+                    (a.0.candidate.dst, a.0.candidate.len) == (b.0.candidate.dst, b.0.candidate.len)
+                },
+            )
+            .unwrap(),
+            emitted: 0,
+            volume: 0,
+        };
+        let started = std::time::Instant::now();
+        let summary = enumerate_spooled(&spool, &cfg, &session, &mut sink).unwrap();
+        let e = sink.emitted;
+        let v = sink.volume;
+        let intervals = sink.sort.finish().unwrap();
+        assert_eq!(summary.next_ordinal, e);
+        eprintln!(
+            "M3_DIAGNOSTIC E={e} U={e}(unique source-grid/target pairs) D={} V={v} elapsed={:?} temp_peak={} memory_peak={}",
+            intervals.len(),
+            started.elapsed(),
+            ctx.temp.high_water(),
+            ctx.memory.high_water()
+        );
+    }
     struct Rows(Vec<CandidateRow>);
     impl CandidateSink for Rows {
         fn emit(&mut self, r: CandidateRow) -> crate::Result<()> {

@@ -6,7 +6,9 @@ use crate::config::{CompressionConfig, M1_SEED_SIZE, Method};
 use crate::error::{Error, Result};
 use crate::match_ir::MatchCandidate;
 use crate::polynomial::polynomial_hash;
-use crate::resource::{BudgetedVec, MemoryBudget, ResourceContext};
+#[cfg(test)]
+use crate::resource::MemoryBudget;
+use crate::resource::{BudgetedVec, ResourceContext};
 
 use crate::offload::contracts::{CandidateRow, CandidateSink, Provenance};
 use crate::offload::session::CompressionSession;
@@ -144,6 +146,7 @@ where
 /// Stream CDC candidates without retaining a block's boundary vector or the
 /// candidate output.  The private codec caller supplies its session-owned
 /// paged index and candidate sink.
+#[allow(clippy::too_many_arguments)] // Explicit digest injection + owned codec resources.
 pub(crate) fn emit_matches_spooled_with_digest<D>(
     spool: &InputSpool,
     config: &CompressionConfig,
@@ -334,6 +337,7 @@ struct BoundaryCursor {
     state: BoundaryState,
 }
 
+#[allow(clippy::large_enum_variant)] // Fixed304-byte stack state avoids per-boundary heap allocation.
 enum BoundaryState {
     M1 {
         block_end: u64,
@@ -497,7 +501,7 @@ impl BoundaryCursor {
                     *position = position
                         .checked_add(1)
                         .ok_or_else(|| Error::invalid_match("m2 scan position overflows"))?;
-                    if *hash > u32::from(*threshold) && chunk_len >= *min_chunk {
+                    if *hash > *threshold && chunk_len >= *min_chunk {
                         let result = (*last_boundary, at);
                         *last_boundary = at;
                         *predict = [0; 256];
@@ -521,6 +525,7 @@ fn threshold_u32(target: u64) -> u32 {
     u32::MAX - (u32::MAX / u32::try_from(target).unwrap_or(u32::MAX))
 }
 
+#[cfg(test)]
 fn m1_boundaries(
     source: &mut impl DataSource,
     block_start: u64,
@@ -539,6 +544,7 @@ fn m1_boundaries(
     )
 }
 
+#[cfg(test)]
 fn m1_boundaries_core<P>(
     source: &mut impl DataSource,
     block_start: u64,
@@ -595,6 +601,7 @@ where
     Ok(boundaries)
 }
 
+#[cfg(test)]
 fn m2_boundaries(
     source: &mut impl DataSource,
     block_start: u64,
@@ -613,6 +620,7 @@ fn m2_boundaries(
     )
 }
 
+#[cfg(test)]
 fn m2_boundaries_core<P>(
     source: &mut impl DataSource,
     block_start: u64,

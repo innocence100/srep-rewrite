@@ -12,6 +12,7 @@
 //! [`ErrorKind::UnsupportedVersion`].
 
 pub mod candidate_index;
+#[cfg(test)]
 mod candidate_validation;
 pub mod checksum;
 pub mod codec;

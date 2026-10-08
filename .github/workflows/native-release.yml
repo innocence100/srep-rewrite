@@ -3,7 +3,7 @@ name: Native release artifacts
 on:
   push:
     branches:
-      - 'ci/native-release/v0.1.1'
+      - 'ci/native-release/v0.2.0'
   workflow_dispatch:
     inputs:
       ref:
@@ -17,7 +17,7 @@ on:
       version:
         description: Expected Cargo package version
         required: true
-        default: 0.1.1
+        default: 0.2.0
         type: string
 
 permissions:
@@ -96,7 +96,7 @@ jobs:
       - name: Verify manifest version
         shell: bash
         env:
-          EXPECTED_VERSION: ${{ inputs.version || '0.1.1' }}
+          EXPECTED_VERSION: ${{ inputs.version || '0.2.0' }}
         run: |
           python -c 'import pathlib,tomllib,os; actual=tomllib.loads(pathlib.Path("source/Cargo.toml").read_text())["package"]["version"]; expected=os.environ["EXPECTED_VERSION"]; assert actual == expected, (actual, expected)'
       - name: Check native source
@@ -126,7 +126,7 @@ jobs:
         if: matrix.rust == '1.88.0'
         uses: actions/upload-artifact@v4
         with:
-          name: srep-v${{ inputs.version || '0.1.1' }}-${{ matrix.target }}
+          name: srep-v${{ inputs.version || '0.2.0' }}-${{ matrix.target }}
           path: ${{ runner.temp }}/native-dist/*
           if-no-files-found: error
           retention-days: 14
