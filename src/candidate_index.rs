@@ -2128,10 +2128,21 @@ impl<'a> CodecPagedIndex<'a> {
 
         loop {
             self.session.check_cancelled()?;
-            let Some(selected) = (0..sources)
-                .filter(|&i| heads[i].is_some())
-                .min_by(|&a, &b| index_entry_order(&heads[a].unwrap(), &heads[b].unwrap()))
-            else {
+            let mut selected: Option<usize> = None;
+            for i in 0..sources {
+                if heads[i].is_some()
+                    && selected.is_none_or(|best| {
+                        index_entry_order(
+                            heads[i].as_ref().expect("present head"),
+                            heads[best].as_ref().expect("present head"),
+                        )
+                        .is_lt()
+                    })
+                {
+                    selected = Some(i);
+                }
+            }
+            let Some(selected) = selected else {
                 break;
             };
             let entry = heads[selected].take().unwrap();

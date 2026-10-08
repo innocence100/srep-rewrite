@@ -341,6 +341,7 @@ impl FixedAcceleration {
         Ok(self.uniform_run(previous, span)? >= span)
     }
 
+    #[inline(always)]
     fn common_prefix(&self, first: u64, second: u64, limit: u64) -> Result<u64> {
         if limit == 0 {
             return Ok(0);
@@ -366,17 +367,22 @@ impl FixedAcceleration {
             .min(limit_index);
         let first_bytes = &self.bytes.as_slice()[first_index..first_index + available];
         let second_bytes = &self.bytes.as_slice()[second_index..second_index + available];
-        Ok(first_bytes
-            .iter()
-            .zip(second_bytes)
-            .take_while(|(left, right)| left == right)
-            .count() as u64)
+        if first_bytes == second_bytes {
+            return Ok(available as u64);
+        }
+        let mut matched = 0usize;
+        while matched < available && first_bytes[matched] == second_bytes[matched] {
+            matched += 1;
+        }
+        Ok(matched as u64)
     }
 
+    #[inline(always)]
     fn exact_contiguous(&self, first: u64, second: u64, length: u64) -> Result<bool> {
         Ok(self.common_prefix(first, second, length)? == length)
     }
 
+    #[inline(always)]
     fn exact_periodic(
         &self,
         base: u64,

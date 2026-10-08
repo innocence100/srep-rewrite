@@ -80,14 +80,26 @@ impl Transcript {
             overlay,
         }
     }
-    fn event(&mut self, b: &[u8; 96]) {
+    /// Reserve the next 96-byte event slot, zero-fill it, and hand it to
+    /// `write` for exact field placement. This is byte-for-byte identical to
+    /// building a fresh `[0u8; 96]` and copying it in, but avoids 96-byte
+    /// temporary construction and the intermediate copy in the debug/unoptimized
+    /// hot path (16.5M rows x 2 passes on the frozen sample03 probe). Only the
+    /// bytes `write` sets are non-zero; every other byte is explicitly zeroed,
+    /// so padding/stale bytes can never leak between events.
+    #[inline(always)]
+    fn event(&mut self, write: impl FnOnce(&mut [u8])) {
         if self.used == self.buffer.len() {
             self.hash.update(&self.buffer);
             self.used = 0;
         }
-        self.buffer[self.used..self.used + 96].copy_from_slice(b);
-        self.used += 96;
+        let used = self.used;
+        let slot = &mut self.buffer[used..used + 96];
+        slot.fill(0);
+        write(slot);
+        self.used = used + 96;
     }
+    #[inline(always)]
     fn begin(&mut self, phase: u8, method: u8, start: u64) -> Result<()> {
         if self.phase.is_some()
             || phase != self.ended
@@ -97,15 +109,16 @@ impl Transcript {
         {
             return Err(Error::corrupt_index("m3 phase begin mismatch"));
         }
-        let mut b = [0; 96];
-        b[0] = 1;
-        b[1] = phase;
-        b[2] = method;
-        put(&mut b, 8, start);
-        self.event(&b);
+        self.event(|b| {
+            b[0] = 1;
+            b[1] = phase;
+            b[2] = method;
+            put(b, 8, start);
+        });
         self.phase = Some((phase, method, start));
         Ok(())
     }
+    #[inline(always)]
     fn row(&mut self, r: CandidateRow) -> Result<()> {
         let (phase, method, _) = self
             .phase
@@ -116,24 +129,21 @@ impl Transcript {
         {
             return Err(Error::corrupt_index("m3 row ordinal/provenance mismatch"));
         }
-        let mut b = [0; 96];
-        b[0] = 2;
-        b[1] = phase;
-        b[2] = method;
-        for (i, n) in [
-            r.candidate.src,
-            r.candidate.dst,
-            r.candidate.len,
-            r.candidate.insertion_ordinal,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            put(&mut b, 8 + i * 8, n);
-        }
-        b[40] = r.provenance.method;
-        b[41] = r.provenance.phase;
-        self.event(&b);
+        // Explicit checked writes preserve the exact 96-byte layout
+        // (tag/phase/method at 0..3, src/dst/len/ordinal at 8..40,
+        // provenance at 40/41, zero padding at 3..8 and 42..96) without an
+        // intermediate array or an unoptimized iterator in debug builds.
+        self.event(|b| {
+            b[0] = 2;
+            b[1] = phase;
+            b[2] = method;
+            put(b, 8, r.candidate.src);
+            put(b, 16, r.candidate.dst);
+            put(b, 24, r.candidate.len);
+            put(b, 32, r.candidate.insertion_ordinal);
+            b[40] = r.provenance.method;
+            b[41] = r.provenance.phase;
+        });
         self.count = self
             .count
             .checked_add(1)
@@ -144,27 +154,27 @@ impl Transcript {
             .ok_or_else(|| Error::invalid_match("m3 stream ordinal overflow"))?;
         Ok(())
     }
+    #[inline(always)]
     fn end(&mut self, p: u8, m: u8, start: u64, next: u64) -> Result<()> {
         if self.phase != Some((p, m, start)) || next != self.next {
             return Err(Error::corrupt_index("m3 phase end mismatch"));
         }
-        let mut b = [0; 96];
-        b[0] = 3;
-        b[1] = p;
-        b[2] = m;
-        put(&mut b, 8, start);
-        put(&mut b, 16, next);
-        put(
-            &mut b,
-            24,
-            next.checked_sub(start)
-                .ok_or_else(|| Error::corrupt_index("m3 phase count"))?,
-        );
-        self.event(&b);
+        let count = next
+            .checked_sub(start)
+            .ok_or_else(|| Error::corrupt_index("m3 phase count"))?;
+        self.event(|b| {
+            b[0] = 3;
+            b[1] = p;
+            b[2] = m;
+            put(b, 8, start);
+            put(b, 16, next);
+            put(b, 24, count);
+        });
         self.phase = None;
         self.ended += 1;
         Ok(())
     }
+    #[inline(always)]
     fn finish(&mut self, summary: &EnumerationSummary) -> Result<[u8; 32]> {
         if self.phase.is_some()
             || self.ended != 1 + u8::from(self.overlay)
@@ -173,12 +183,13 @@ impl Transcript {
         {
             return Err(Error::corrupt_index("m3 stream completion mismatch"));
         }
-        let mut b = [0; 96];
-        b[0] = 4;
-        put(&mut b, 8, self.count);
-        put(&mut b, 16, self.next);
-        put(&mut b, 24, self.ended as u64);
-        self.event(&b);
+        let (count, next, ended) = (self.count, self.next, self.ended as u64);
+        self.event(|b| {
+            b[0] = 4;
+            put(b, 8, count);
+            put(b, 16, next);
+            put(b, 24, ended);
+        });
         self.hash.update(&self.buffer[..self.used]);
         Ok(*self.hash.finalize().as_bytes())
     }
@@ -394,6 +405,7 @@ impl<'a> Verifier<'a> {
             session,
         })
     }
+    #[inline(always)]
     fn equal(&mut self, c: MatchCandidate) -> Result<bool> {
         match &mut self.view {
             View::Memory { bytes, lce } => {
@@ -429,6 +441,7 @@ impl<'a> Verifier<'a> {
         }
     }
 }
+#[inline(always)]
 fn periodic_equal(c: MatchCandidate, eq: impl Fn(u64, u64, u64) -> bool) -> bool {
     let d = c.dst - c.src;
     eq(c.src, c.dst, c.len.min(d)) && (c.len <= d || eq(c.dst, c.dst + d, c.len - d))
@@ -1654,6 +1667,60 @@ mod tests {
             done[0] = 4;
             done[8..16].copy_from_slice(&1u64.to_le_bytes());
             done[16..24].copy_from_slice(&1u64.to_le_bytes());
+            done[24..32].copy_from_slice(&1u64.to_le_bytes());
+            expected.update(&done);
+            assert_eq!(digest, *expected.finalize().as_bytes());
+        }
+
+        #[test]
+        fn transcript_multirow_buffer_boundary_has_no_stale_bytes() {
+            // 6144 / 96 = 64 events per buffer. Emit begin + 70 rows + end +
+            // finish = 73 events so the rolling buffer flushes mid-stream at
+            // least once; the indirect comparison below rebuilds the exact
+            // 96-byte encoding for every event and hashes them in order, so any
+            // stale/padding byte surviving a boundary changes the digest.
+            let (_, s, spool, c) = setup(&[0; 96]);
+            let binding = Binding::new(&c).unwrap();
+            let input = spool.input_identity();
+            let rows: Vec<CandidateRow> = (0..70u64).map(|n| row(1, 64 + n, 40, n)).collect();
+            let mut t = Transcript::new(binding, input, false);
+            t.begin(0, 3, 0).unwrap();
+            for r in &rows {
+                t.row(*r).unwrap();
+            }
+            t.end(0, 3, 0, 70).unwrap();
+            let digest = t.finish(&summary(&s, 70)).unwrap();
+
+            let mut expected = blake3::Hasher::new();
+            expected.update(b"SREP-OFF-M3-ENUM-v1\0");
+            expected.update(&1u16.to_le_bytes());
+            expected.update(&binding.0);
+            expected.update(&input.encode());
+            let mut begin = [0; 96];
+            begin[0] = 1;
+            begin[2] = 3;
+            expected.update(&begin);
+            for (ordinal, r) in rows.iter().enumerate() {
+                let mut candidate = [0; 96];
+                candidate[0] = 2;
+                candidate[2] = 3;
+                candidate[8..16].copy_from_slice(&r.candidate.src.to_le_bytes());
+                candidate[16..24].copy_from_slice(&r.candidate.dst.to_le_bytes());
+                candidate[24..32].copy_from_slice(&r.candidate.len.to_le_bytes());
+                candidate[32..40].copy_from_slice(&(ordinal as u64).to_le_bytes());
+                candidate[40] = 3;
+                expected.update(&candidate);
+            }
+            let mut end = [0; 96];
+            end[0] = 3;
+            end[2] = 3;
+            end[16..24].copy_from_slice(&70u64.to_le_bytes());
+            end[24..32].copy_from_slice(&70u64.to_le_bytes());
+            expected.update(&end);
+            let mut done = [0; 96];
+            done[0] = 4;
+            done[8..16].copy_from_slice(&70u64.to_le_bytes());
+            done[16..24].copy_from_slice(&70u64.to_le_bytes());
             done[24..32].copy_from_slice(&1u64.to_le_bytes());
             expected.update(&done);
             assert_eq!(digest, *expected.finalize().as_bytes());

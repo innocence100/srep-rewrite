@@ -546,6 +546,7 @@ impl ExactLce {
         })
     }
 
+    #[inline(always)]
     pub(crate) fn query(&self, first: usize, second: usize, limit: usize) -> usize {
         let inverse = self.inverse.as_slice();
         let tree = self.tree.as_slice();
@@ -555,22 +556,24 @@ impl ExactLce {
         if first == second {
             return limit;
         }
-        let lower = (inverse[first] as usize).min(inverse[second] as usize);
-        let upper = (inverse[first] as usize).max(inverse[second] as usize);
+        let first_rank = inverse[first] as usize;
+        let second_rank = inverse[second] as usize;
+        let lower = first_rank.min(second_rank);
+        let upper = first_rank.max(second_rank);
         let mut left = self.tree_base + lower + 1;
         let mut right = self.tree_base + upper;
         let mut result = u32::MAX;
         while left <= right {
-            if left % 2 == 1 {
+            if left & 1 == 1 {
                 result = result.min(tree[left]);
                 left += 1;
             }
-            if right.is_multiple_of(2) {
+            if right & 1 == 0 {
                 result = result.min(tree[right]);
                 right -= 1;
             }
-            left /= 2;
-            right /= 2;
+            left >>= 1;
+            right >>= 1;
         }
         (result as usize).min(limit)
     }
