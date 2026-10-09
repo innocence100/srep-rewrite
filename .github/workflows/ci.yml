@@ -51,7 +51,8 @@ jobs:
           components: rustfmt, clippy
       - run: rustup target add x86_64-pc-windows-gnu
       - run: cargo fmt --all -- --check
-      # Performance assertions need no competing tests within the process.
+      # Serialized so the suite runs without competing in-process tests; the
+      # release-only wall-clock budgets are enforced in the native release gate.
       - run: cargo test --all-targets --all-features
         env:
           RUST_TEST_THREADS: "1"
@@ -96,7 +97,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - run: cargo check --locked --all-targets --all-features
       - run: cargo build --locked --release
-      # Performance assertions need no competing tests within the process.
+      # Serialized so the suite runs without competing in-process tests; the
+      # release-only wall-clock budgets are enforced in the separate
+      # native-release workflow.
       - run: cargo test --locked --all-targets --all-features
         env:
           RUST_TEST_THREADS: "1"

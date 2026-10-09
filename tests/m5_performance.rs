@@ -112,10 +112,15 @@ fn far_distance_root_cause_is_independent_extension_not_interval_state() {
         }),
         "missing independent far-distance candidate"
     );
-    assert!(
-        elapsed.as_secs() < 30,
-        "independent exact search exceeded 30s: {elapsed:?}"
-    );
+    // Wall-clock budget is enforced only for optimized (release) builds. Debug
+    // builds keep every correctness and resource check but do not gate on time;
+    // see CONTRIBUTING.md "Performance policy".
+    if !cfg!(debug_assertions) {
+        assert!(
+            elapsed.as_secs() < 30,
+            "independent exact search exceeded 30s: {elapsed:?}"
+        );
+    }
 }
 
 #[test]
@@ -163,10 +168,14 @@ fn far_distance_2mib_finder_completes_without_oracle() {
         }),
         "missing independent 2MiB far-distance candidate"
     );
-    assert!(
-        elapsed.as_secs() < 180,
-        "2MiB far-distance exceeded 180s: {elapsed:?}"
-    );
+    // Wall-clock budget is enforced only for optimized (release) builds; see
+    // CONTRIBUTING.md "Performance policy".
+    if !cfg!(debug_assertions) {
+        assert!(
+            elapsed.as_secs() < 180,
+            "2MiB far-distance exceeded 180s: {elapsed:?}"
+        );
+    }
     eprintln!(
         "2MiB far-distance m5 finder: {elapsed:?} candidates={}",
         produced.len()

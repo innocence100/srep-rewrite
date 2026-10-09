@@ -86,11 +86,16 @@ fn m0_repeated_128k_block_has_bounded_completion_and_coverage() {
 
     let candidates = find_matches_m0(Cursor::new(&input), &config, &context).unwrap();
 
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "m0 repeated-block discovery exceeded practical bound: {:?}",
-        started.elapsed()
-    );
+    // Wall-clock budget is enforced only for optimized (release) builds. Debug
+    // builds keep every correctness and resource check but do not gate on time;
+    // see CONTRIBUTING.md "Performance policy".
+    if !cfg!(debug_assertions) {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "m0 repeated-block discovery exceeded practical bound: {:?}",
+            started.elapsed()
+        );
+    }
     assert!(candidates.iter().any(|candidate| {
         candidate.dst >= block.len() as u64
             && candidate.dst + candidate.len >= input.len() as u64
@@ -135,11 +140,15 @@ fn m0_frozen_exact_repeat_compresses_end_to_end_within_bound() {
     let mut archive = Vec::new();
     let stats = compress(Cursor::new(&input), &mut archive, &config).unwrap();
 
-    assert!(
-        started.elapsed() < Duration::from_secs(30),
-        "frozen exact-repeat compression exceeded practical bound: {:?}",
-        started.elapsed()
-    );
+    // Wall-clock budget is enforced only for optimized (release) builds; see
+    // CONTRIBUTING.md "Performance policy".
+    if !cfg!(debug_assertions) {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "frozen exact-repeat compression exceeded practical bound: {:?}",
+            started.elapsed()
+        );
+    }
     assert!(!archive.is_empty());
     assert!(stats.covered_bytes > 0);
 
