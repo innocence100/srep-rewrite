@@ -1,13 +1,34 @@
 # Changelog
 
-All notable changes to this project are documented here. Current maintenance
-work remains unreleased until independent review and native artifact validation.
+All notable changes to this project are documented here.
 
-## 0.2.0 — Unreleased until publication
+## Unreleased
 
-**Status: source and tooling candidate; publication requires parent review and
-the native GitHub Actions run.** This document does not publish a release and
-does not alter existing tags or assets.
+Two distinct, unrelated efforts are in flight after the 0.2.0 release:
+
+- **Documentation closeout (this branch).** Clarification of the already-published
+  releases: correcting stale candidate/unreleased wording, recording accurate
+  install/release links, runtime requirements, and acceptance evidence, and
+  separating archived historical local evidence from final actual-package
+  results. This is documentation only and makes no new functionality claim.
+- **Sparse-input optimization work in progress (separate worker).** A partial,
+  unreviewed effort addressing the sample-07 sparse-input cost noted as a 0.2.0
+  release limitation. It is not complete, not independently reviewed, and not
+  accepted; no improvement, performance, quality, or acceptance claim is made
+  for it here. Any future change remains unreleased until independent review and
+  native artifact validation.
+
+## 0.2.0 — 2026-10-10 (published limited prerelease)
+
+**Status: PUBLISHED as a limited prerelease.** Release
+<https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.0>, published
+2026-10-10T02:19:26Z from source commit
+`6ce0a32b83c625519a427c0d3365e0abfee22d7e` (annotated tag
+`eb4d54deee5db1c0a1335f880a6b16aeaceead99`). It is marked `prerelease` and is
+not the repository's `latest` release. All 10 assets download and verify; the
+native packaging run `37939335761` and CI run `37939335813` each passed 6/6
+jobs on that commit. See `docs/evidence/v0.2.0-publication.md` for hashes and
+caveats. This document does not alter any existing tag or asset.
 
 - Bounded-memory offload path for internal generation. `--memory` is defined as
   the managed compression working memory: input/output buffers, candidate
@@ -30,12 +51,29 @@ does not alter existing tags or assets.
   `raw_size <= 1.10` limits are retained as diagnostics, not gates; the old
   immutable FAIL report is preserved unchanged.
 - No algorithm, ratio, fidelity, or performance claim is made here. Local
-  Linux evidence is recorded (490-test suite green; 258 MiB round trip PASS;
-  real 72-row run resource-complete at 72/72 round trips; new-policy verdict
-  PASS, old-policy verdict FAIL preserved distinctly). Native
-  packaging/publication gates remain open until their evidence lands.
+  Linux evidence on the dirty pre-version candidate binary (`996dcecf…`) is
+  recorded (490-test suite green; 258 MiB round trip PASS; candidate 72-row run
+  resource-complete at 72/72 round trips; new-policy verdict PASS, old-policy
+  verdict FAIL preserved distinctly). The final **actual-package** evidence on
+  the published Linux package binary (`38a3a045…`) is separate: a 72-row
+  report (SHA-256 `402ca803…`) with 65 wins / 0 ties / 7 losses and all six
+  methods passing the strict-majority gate, plus a 258 MiB default-settings
+  round trip PASS. Packaging and publication are complete for 0.2.0.
+- **Known release limitation:** a 512 KiB sparse input (sample 07) remains
+  hours-level work for some methods. This is disclosed as a limitation of the
+  0.2.0 release; no future optimization or performance improvement is claimed.
 
-## Unreleased — 0.1.1 maintenance
+## 0.1.1 — 2026-09-29 (published limited prerelease)
+
+**Status: PUBLISHED as a limited prerelease.** Release id `399148285`, published
+2026-09-29T12:57:56Z from source commit
+`8b0e9056fad4e91e63b0cac169afb0ade322cf90` (annotated tag
+`bd728b1dc61c9669bd09ced5e4525e70149c2e33`). It is marked `prerelease`. Five
+assets are published (three native archives plus `release-provenance.json` and
+`SHA256SUMS`) and remain unchanged. The notes below record what 0.1.1 contained
+at publication; the 72-row fidelity gap described here was a known limitation of
+that release, not a hidden pass, and was carried forward and addressed separately
+in 0.2.0.
 
 - Continued maintenance toward 0.1.1 without changing the NGv3 algorithm or
   claiming historical-compressor parity. Native Linux, Windows MSVC, and macOS
@@ -55,9 +93,10 @@ does not alter existing tags or assets.
   packaging records actual compiler, registry notices, Rust copyright notices,
   source/tooling hashes, binary/archive hashes, extracted version/help, and
   multi-block compress/info/test/decompress/hash smoke evidence.
-- Runtime compatibility for a newly built 0.1.1 binary is intentionally
-  unknown until its native build completes. The observed GLIBC_2.30 bound and
-  SHA-256 values below belong only to the already-published 0.1.0 Linux asset.
+- The observed runtime bound and hashes for the 0.1.1 packages are recorded in
+  each package's `NOTICES` and `BUILD-PROVENANCE.json`. The observed GLIBC_2.30
+  bound and 0.1.0 SHA-256 values belong only to the already-published 0.1.0
+  Linux asset, not to 0.1.1.
 
 ## 0.1.0 — 2026-09-23 (published limited Linux preview)
 

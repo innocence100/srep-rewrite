@@ -34,19 +34,22 @@ Before submitting code changes, use the repository's applicable formatting,
 lint, test, documentation, and release-smoke checks. Native Windows and macOS
 compile, link, and test evidence must come from GitHub Actions on the relevant
 native runners. A Linux cross-compilation check is only a compile hint and is
-not Windows or macOS verification. The 0.2.0 candidate targets Linux x86_64
-glibc, Windows x86_64 MSVC, and macOS ARM64. Measure runtime requirements on
-each actual package; the historical 0.1.0 GLIBC_2.30 observation does not prove
-the compatibility of a new build.
+not Windows or macOS verification. The published 0.2.0 packages target Linux
+x86_64 glibc, Windows x86_64 MSVC, and macOS ARM64. Measure runtime requirements
+on each actual package; the historical 0.1.0 GLIBC_2.30 observation does not
+prove the compatibility of a new build, and the 0.2.0 Linux package's observed
+GLIBC_2.34 floor is likewise only an observed value for that artifact.
 
 For documentation-only changes, perform read-only checks that do not rebuild or
 rewrite shared artifacts. In particular, verify that examples use the current
-CLI names, that `CHANGELOG.md` keeps the current work under `Unreleased` until
-publication (historical notes must remain labeled as history, not as current
-release claims), and that the incomplete 72-row fidelity comparison is not
-claimed as a pass. The historical 0.1.0 default-m3 round trip is recorded
-in the release notes as a correctness check; do not turn those raw timings
-into a performance claim.
+CLI names, that `CHANGELOG.md` keeps any genuinely new work under `Unreleased`
+until publication (published releases carry their real publication date and
+status; historical notes must remain labeled as history, not as current release
+claims), and that the completed 0.2.0 actual-package 72-row comparison is not
+misrepresented as universal quality or performance. The archived local candidate
+evidence and the final actual-package results are separate records; do not merge
+them. The historical 0.1.0 default-m3 round trip is recorded in the release notes
+as a correctness check; do not turn those raw timings into a performance claim.
 
 ## Archive safety
 
@@ -107,13 +110,15 @@ contain `srep`, `LICENSE`, `THIRD_PARTY.md`, `THIRD_PARTY.audit`, `README.md`,
 (Windows uses `srep.exe`); dependency notices are collected by the release
 integration owner. The SPDX map in `THIRD_PARTY.audit` is an attribution
 checklist, not a certification that every legal requirement is satisfied.
-For 0.2.0, all six native jobs (three OSes × stable/MSRV) and three extracted
-package smoke tests are required. They run the release-profile tests, where the
-original wall-clock budgets remain enforced (see "Performance policy"). The
-separate `ci.yml` debug-profile checks remain unchanged in command structure and
-intentionally run the functional path at debug speed; a genuine failure there
-must be reported, not relabeled as a release-profile pass. No platform is
-described as published without an actual artifact.
+For a future release, all six native jobs (three OSes × stable/MSRV) and three
+extracted package smoke tests are required. They run the release-profile tests,
+where the original wall-clock budgets remain enforced (see "Performance
+policy"). The separate `ci.yml` debug-profile checks remain unchanged in command
+structure and intentionally run the functional path at debug speed; a genuine
+failure there must be reported, not relabeled as a release-profile pass. Do not
+describe a release as published without an actual, verified artifact. The
+already-published 0.2.0 and 0.1.1 releases remain as published; do not repack,
+move tags, or rewrite their assets.
 
 Push builds use the workflow commit (`github.sha`) for both source and tooling.
 Manual dispatch requires an explicit source ref, full expected source SHA, and

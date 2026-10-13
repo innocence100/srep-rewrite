@@ -30,12 +30,19 @@ where NGv3 explicitly inherits matching and resource semantics.
 
 ## Install a 0.2.0 native release artifact
 
-Version 0.2.0 is a release candidate. Publication requires independent
-review and fresh native GitHub Actions evidence for Linux x86_64, Windows
-x86_64 MSVC, and macOS ARM64. Expected package names are below; their presence
-here does not mean they have been published. Exact target, source, compiler,
-hash, and runtime details come
-from each package's `BUILD-PROVENANCE.json` and `NOTICES`.
+Version **0.2.0** is published as a **limited prerelease** on GitHub:
+
+<https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.0>
+
+It was published **2026-10-10T02:19:26Z** from source commit
+`6ce0a32b83c625519a427c0d3365e0abfee22d7e` (annotated tag
+`eb4d54deee5db1c0a1335f880a6b16aeaceead99`). It is marked `prerelease`, and
+`releases/latest` does not point to it. The release carries three native
+platform archives for Linux x86_64, Windows x86_64 MSVC, and macOS ARM64, plus
+its evidence and checksum assets. Exact target, source, compiler, hash, and
+runtime details come from each package's `BUILD-PROVENANCE.json` and `NOTICES`.
+Download URLs, hashes, and caveats are collected in
+[`docs/evidence/v0.2.0-publication.md`](docs/evidence/v0.2.0-publication.md).
 
 ```text
 srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz
@@ -43,10 +50,9 @@ srep-v0.2.0-x86_64-pc-windows-msvc.zip
 srep-v0.2.0-aarch64-apple-darwin.tar.gz
 ```
 
-Each archive has one directory named after its basename without `.tar.gz` or
-`.zip` and contains the
-binary, release documents, `NOTICES`, `BUILD-PROVENANCE.json`, and
-`PLATFORM-README.md`. `SHA256SUMS` is beside the archive.
+These are the three published native archives. Each archive has one directory
+named after its basename without `.tar.gz` or `.zip`; that directory's root
+holds the following files:
 
 ```text
 srep (srep.exe on Windows)
@@ -83,9 +89,21 @@ The macOS package is ARM64, not Intel/universal. Packages are not publisher
 code-signed or notarized. macOS may require explicit approval in Privacy &
 Security after verification; do not disable Gatekeeper globally.
 
-New 0.2.0 runtime compatibility is unknown
-until the native build completes. The published 0.1.0 tarball remains
-unchanged; its SHA-256 is
+Observed 0.2.0 runtime requirements from the actual published packages:
+
+- **Linux x86_64 glibc:** requires at least **GLIBC_2.34** as observed from the
+  binary's GLIBC symbol versions (built on Ubuntu; an observed floor, not a
+  guarantee for every environment). A host with an older glibc, such as
+  glibc 2.31, cannot load this binary.
+- **Windows x86_64 MSVC:** native PE32+ x86_64 MSVC binary (not ARM64, not
+  MinGW); unsigned.
+- **macOS ARM64:** native arm64 Mach-O (not Intel/universal); not publisher
+  code-signed and not notarized. It carries an ad-hoc Rust code signature (an
+  `LC_CODE_SIGNATURE` with CodeDirectory flags `0x20002` / `CS_ADHOC`); an
+  ad-hoc signature does not authenticate a publisher identity.
+
+No other platforms were built or tested for 0.2.0. The published 0.1.0 and
+0.1.1 releases are historical and unchanged; the 0.1.0 Linux tarball SHA-256 is
 `039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401`.
 
 ## Build from source
@@ -167,34 +185,46 @@ does not require a sidecar index. `info` reports the archive's format,
 method, layout, checksum, and size/match metadata.
 
 This describes implemented interfaces, not a claim that NGv3 matches the
-historical compressor's byte output, ratio, or runtime. The 0.2.0 candidate
-adds a bounded-memory offload path (256 MiB managed working memory, pathnames
-and runtime excluded) and is **not yet released**: the real 72-row comparison
-completed 72/72 byte-identical round trips (resource SUCCESS). Quality is
-judged by the user-revised `majority-final-xz-v1` gate: all six methods pass a
-per-method strict majority of final-XZ streams strictly smaller than the frozen
-baseline on the fixed 12-sample corpus (ties do not win; m0 11/12, m1 10/12,
-m2 9/12, m3 12/12, m4 12/12, m5 11/12; coverage gate passes). Under the
-**previous** policy the same unchanged evidence read FAIL on four
-small-denominator rows; that old verdict is preserved distinctly — see
+historical compressor's byte output, ratio, or runtime. Version 0.2.0 adds a
+bounded-memory offload path (256 MiB managed working memory, pathnames, runtime,
+and allocator overhead excluded) and is **published** as a limited prerelease.
+The final actual-package 72-row comparison completed 72/72 byte-identical round
+trips (resource SUCCESS). Quality is judged by the user-revised
+`majority-final-xz-v1` gate: all six methods pass a per-method strict majority of
+final-XZ streams strictly smaller than the frozen baseline on the fixed
+12-sample corpus (ties do not win; m0 11/12, m1 10/12, m2 9/12, m3 12/12,
+m4 12/12, m5 11/12; coverage gate passes). Under the **previous** policy the same
+unchanged historical candidate evidence read FAIL on four small-denominator rows;
+that old verdict is preserved distinctly — see
 `docs/evidence/v0.2.0-local-acceptance.md`. No universal large-file, uniform
-skip, algorithm, ratio, or fidelity claim follows. The prior integration
-handoff's 12-row comparison and the historical sample-03/m0 out-of-memory
-record remain as history, not fresh evidence.
+skip, algorithm, ratio, or fidelity claim follows. A known 0.2.0 release
+limitation is sparse-input cost: the 512 KiB sparse sample 07 remains
+hours-level work for some methods. No future optimization is claimed. The prior
+integration handoff's 12-row comparison and the historical sample-03/m0
+out-of-memory record remain as history, not fresh evidence.
+
+The archived local candidate evidence above and the final actual-package results
+are distinct: the local candidate report was produced on a dirty, pre-version
+candidate binary (`996dcecf…`), while the release evidence was produced on the
+published, committed Linux package binary (`38a3a045…`). See
+[`docs/evidence/v0.2.0-publication.md`](docs/evidence/v0.2.0-publication.md).
 
 ## Evidence and release status
 
-Prior CI evidence at commit
-[`8dca8be`](https://github.com/innocence100/srep-rewrite/actions/runs/34926545492)
-covered six native jobs (Linux, Windows MSVC, and macOS ARM64 at stable and
-Rust 1.88). That evidence is source validation at that commit, not evidence
-that a new artifact has been produced, and it is not a substitute for the
-Linux release-binary checks.
+Version 0.2.0 was published as a limited prerelease on 2026-10-10T02:19:26Z
+from commit `6ce0a32b83c625519a427c0d3365e0abfee22d7e`. The native packaging run
+[`37939335761`](https://github.com/innocence100/srep-rewrite/actions/runs/37939335761)
+and the CI run
+[`37939335813`](https://github.com/innocence100/srep-rewrite/actions/runs/37939335813)
+each passed 6/6 jobs on that exact commit. All 10 release assets download and
+verify. The curated evidence, per-asset hashes, and caveats are in
+[`docs/evidence/v0.2.0-publication.md`](docs/evidence/v0.2.0-publication.md).
 
-The retained m1 finder evidence used a 258 MiB input and included a repeated
-block whose match-distance witness was greater than 256 MiB; it completed in
-17.57 seconds. It is not full round-trip evidence and is not default-m3
-performance evidence.
+The archived **local** evidence remains distinct from the release. The
+`docs/evidence/v0.2.0-local-acceptance.md` record was produced on a dirty
+pre-version candidate binary (`996dcecf…`); the older 12-row integration handoff
+and the sample-03/m0 out-of-memory record are history. None of those are the
+final actual-package result.
 
 The historical **0.1.0** default-m3 Linux release-binary comparison **passed**. Recipe
 `repeat-1mib-separated-256mib-unique-v1`, 270532608 bytes, input SHA-256
