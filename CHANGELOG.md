@@ -11,12 +11,26 @@ Two distinct, unrelated efforts are in flight after the 0.2.0 release:
   install/release links, runtime requirements, and acceptance evidence, and
   separating archived historical local evidence from final actual-package
   results. This is documentation only and makes no new functionality claim.
-- **Sparse-input optimization work in progress (separate worker).** A partial,
-  unreviewed effort addressing the sample-07 sparse-input cost noted as a 0.2.0
-  release limitation. It is not complete, not independently reviewed, and not
-  accepted; no improvement, performance, quality, or acceptance claim is made
-  for it here. Any future change remains unreleased until independent review and
-  native artifact validation.
+- **Sparse-input optimization (locally verified; pending review).** Internal m3
+  end-order fusion, authenticated compact sort/DP rows, and a bounded optional
+  predecessor directory are implemented. On a same-host frozen sample-07 m3
+  comparison, the archive is byte-identical to the v0.2.0 release; elapsed
+  compression fell from 10,638.203 s to 4,298.326 s and managed temp peak fell
+  from 9,646,868,416 B to 6,029,489,688 B. Both compared binaries are Rust
+  1.88.0 builds even though the host default toolchain is 1.96.0, and the
+  measurement was serial. The final candidate's peak (5.615400 GiB) still
+  exceeds the unchanged 4-GiB default, and an earlier interim 4-GiB probe failed
+  with `SREP_E_TEMP_LIMIT`; the final candidate was not re-run at 4 GiB, no
+  default was raised, and no 4-GiB pass is claimed. A durable local verification
+  pass (all 25 commands exit 0, MSRV 1.88.0) recorded the all-target suite at 498
+  passed / 0 failed / 2 ignored across 26 targets per run, with the library
+  target alone at 258, plus full72 fidelity, the 258-MiB round trip, and the
+  original 59-test sparse benchmark harness. After the S1 launch-window fix,
+  the final harness integration check passed all 66 tests (17.700 s); both
+  retained same-host profiles were revalidated successfully with unchanged raw
+  artifacts. These changes are unreleased and still pending R-P3 independent
+  source review and native release validation; no
+  optimization is accepted or published.
 
 ## 0.2.0 — 2026-10-10 (published limited prerelease)
 

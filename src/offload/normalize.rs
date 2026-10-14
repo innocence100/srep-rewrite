@@ -308,6 +308,10 @@ fn same_destination_interval(a: &IntervalRow, b: &IntervalRow) -> bool {
     (a.0.candidate.dst, a.0.candidate.len) == (b.0.candidate.dst, b.0.candidate.len)
 }
 
+fn same_destination_end_interval(a: &EndRow, b: &EndRow) -> bool {
+    (a.0.candidate.dst, a.0.candidate.len) == (b.0.candidate.dst, b.0.candidate.len)
+}
+
 fn no_reduction(_: &EndRow, _: &EndRow) -> bool {
     false
 }

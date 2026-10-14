@@ -149,12 +149,35 @@ macro_rules! candidate_order {
         impl FixedRecord for $t {
             const KIND: u8 = 1;
             const ORDER: u8 = $order;
-            const WIDTH: usize = 64;
+            // Once the complete authoritative validation pass has succeeded,
+            // provenance cannot affect normalization or WIS. Store only the
+            // exact candidate tuple (including insertion ordinal) and the
+            // usual authenticated sequence envelope.
+            const WIDTH: usize = 56;
             fn encode(self, m: RecordMeta, s: u64, b: &mut [u8]) -> Result<()> {
-                self.0.encode(m, s, b)
+                if b.len() != Self::WIDTH {
+                    return Err(Error::corrupt_record("candidate interval width"));
+                }
+                b.fill(0);
+                let c = self.0.candidate;
+                put(b, 0, c.src);
+                put(b, 8, c.dst);
+                put(b, 16, c.len);
+                put(b, 24, c.insertion_ordinal);
+                envelope(b, m, s, b"SREP-OFF-CAND-INTERVAL-v1\0");
+                Ok(())
             }
             fn decode(m: RecordMeta, s: u64, b: &[u8]) -> Result<Self> {
-                Ok(Self(CandidateRow::decode(m, s, b)?))
+                check(b, m, s, Self::WIDTH, b"SREP-OFF-CAND-INTERVAL-v1\0")?;
+                Ok(Self(CandidateRow {
+                    candidate: crate::match_ir::MatchCandidate {
+                        src: u64_at(b, 0),
+                        dst: u64_at(b, 8),
+                        len: u64_at(b, 16),
+                        insertion_ordinal: u64_at(b, 24),
+                    },
+                    provenance: Provenance::EXTERNAL,
+                }))
             }
             fn compare(&self, o: &Self) -> Ordering {
                 ($cmp)(self.0, o.0)
@@ -185,6 +208,7 @@ candidate_order!(EndRow, 3, |a: CandidateRow, b: CandidateRow| {
             b.insertion_ordinal,
         ))
 });
+
 impl FixedRecord for Match {
     const KIND: u8 = 3;
     const ORDER: u8 = 4;
@@ -252,19 +276,30 @@ pub(crate) struct DpRow {
     pub(crate) include_parent: u64,
     pub(crate) include_depth: u64,
 }
+
 impl FixedRecord for DpRow {
     const KIND: u8 = 2;
     const ORDER: u8 = 6;
-    const WIDTH: usize = 96;
+    // `count` is exactly recoverable from the objective identity:
+    // covered = gain + 25*count. Omit it from the serialized state while
+    // retaining the remaining recurrence/backtrace fields and envelope.
+    const WIDTH: usize = 64;
     fn encode(self, m: RecordMeta, s: u64, b: &mut [u8]) -> Result<()> {
-        if b.len() != 96 {
+        if b.len() != Self::WIDTH {
             return Err(Error::corrupt_record("DP width"));
+        }
+        let count = self
+            .covered
+            .checked_sub(self.gain)
+            .filter(|residual| residual % 25 == 0)
+            .map(|residual| residual / 25);
+        if count != Some(self.count) {
+            return Err(Error::corrupt_record("DP score fields"));
         }
         b.fill(0);
         for (i, n) in [
             self.gain,
             self.covered,
-            self.count,
             self.best_node,
             self.include_parent,
             self.include_depth,
@@ -274,21 +309,25 @@ impl FixedRecord for DpRow {
         {
             put(b, 8 * i, n);
         }
-        envelope(b, m, s, b"SREP-OFF-DP-v1\0");
+        envelope(b, m, s, b"SREP-OFF-DP-v2\0");
         Ok(())
     }
     fn decode(m: RecordMeta, s: u64, b: &[u8]) -> Result<Self> {
-        check(b, m, s, 96, b"SREP-OFF-DP-v1\0")?;
-        if b[48..72] != [0; 24] {
-            return Err(Error::corrupt_record("DP padding"));
-        }
+        check(b, m, s, Self::WIDTH, b"SREP-OFF-DP-v2\0")?;
+        let gain = u64_at(b, 0);
+        let covered = u64_at(b, 8);
+        let count = covered
+            .checked_sub(gain)
+            .filter(|value| value % 25 == 0)
+            .map(|value| value / 25)
+            .ok_or_else(|| Error::corrupt_record("DP score fields"))?;
         Ok(Self {
-            gain: u64_at(b, 0),
-            covered: u64_at(b, 8),
-            count: u64_at(b, 16),
-            best_node: u64_at(b, 24),
-            include_parent: u64_at(b, 32),
-            include_depth: u64_at(b, 40),
+            gain,
+            covered,
+            count,
+            best_node: u64_at(b, 16),
+            include_parent: u64_at(b, 24),
+            include_depth: u64_at(b, 32),
         })
     }
     fn compare(&self, _: &Self) -> Ordering {
@@ -789,8 +828,8 @@ pub(crate) struct RecordTable<T: FixedRecord> {
 
 /// Explicit shared fixed page cache for W1 random reads. Cache ownership is
 /// outside tables: N live runs never allocate N caches. Payload pages begin at
-/// offset128; a96-byte DP row may straddle two pages and is assembled before its
-/// identity/sequence/checksum is checked. Eviction never changes row semantics.
+/// offset128; fixed records are assembled before identity/sequence/checksum
+/// validation. Eviction never changes row semantics.
 pub(crate) struct RecordPageCache {
     bytes: BudgetedVec<u8>,
     page_len: usize,
@@ -1435,6 +1474,128 @@ mod tests {
         );
         check_row(ReverseIndexRow { candidate_index: 7 }, meta);
     }
+
+    #[test]
+    fn compact_dp_score_checks_both_checked_arithmetic_directions() {
+        let (_, s) = setup();
+        let meta = RecordMeta {
+            session: s.identity(),
+            generation: 7,
+            file_id: [9; 16],
+            kind: DpRow::KIND,
+            order: DpRow::ORDER,
+        };
+        let valid = DpRow {
+            gain: u64::MAX - 25,
+            covered: u64::MAX,
+            count: 1,
+            best_node: 0,
+            include_parent: u64::MAX,
+            include_depth: 1,
+        };
+        let mut bytes = [0; 96];
+        valid.encode(meta, 0, &mut bytes[..DpRow::WIDTH]).unwrap();
+        assert_eq!(
+            DpRow::decode(meta, 0, &bytes[..DpRow::WIDTH]).unwrap(),
+            valid
+        );
+        for invalid in [
+            DpRow {
+                gain: 2,
+                covered: 1,
+                count: 0,
+                ..valid
+            },
+            DpRow {
+                gain: u64::MAX,
+                covered: 0,
+                count: 0,
+                ..valid
+            },
+            DpRow {
+                gain: 0,
+                covered: u64::MAX,
+                count: u64::MAX,
+                ..valid
+            },
+        ] {
+            assert!(invalid.encode(meta, 0, &mut bytes[..DpRow::WIDTH]).is_err());
+        }
+        valid.encode(meta, 0, &mut bytes[..DpRow::WIDTH]).unwrap();
+        // Make covered smaller than gain while retaining a valid envelope.
+        put(&mut bytes, 8, 0);
+        envelope(&mut bytes[..DpRow::WIDTH], meta, 0, b"SREP-OFF-DP-v2\0");
+        assert!(DpRow::decode(meta, 0, &bytes[..DpRow::WIDTH]).is_err());
+    }
+
+    #[test]
+    fn compact_end_rows_preserve_u64_fields_and_order_without_truncation() {
+        let (_, s) = setup();
+        let meta = RecordMeta {
+            session: s.identity(),
+            generation: 11,
+            file_id: [3; 16],
+            kind: EndRow::KIND,
+            order: EndRow::ORDER,
+        };
+        let rows = [
+            EndRow(CandidateRow {
+                candidate: crate::match_ir::MatchCandidate {
+                    src: 0,
+                    dst: 40,
+                    len: 40,
+                    insertion_ordinal: u64::MAX,
+                },
+                provenance: Provenance::new(3, 1).unwrap(),
+            }),
+            EndRow(CandidateRow {
+                candidate: crate::match_ir::MatchCandidate {
+                    src: 0,
+                    dst: 100,
+                    len: 40,
+                    insertion_ordinal: 0x1_0000_0000,
+                },
+                provenance: Provenance::new(3, 0).unwrap(),
+            }),
+        ];
+        for (seq, row) in rows.into_iter().enumerate() {
+            let mut bytes = [0; 96];
+            row.encode(meta, seq as u64, &mut bytes[..EndRow::WIDTH])
+                .unwrap();
+            let decoded = EndRow::decode(meta, seq as u64, &bytes[..EndRow::WIDTH]).unwrap();
+            assert_eq!(decoded.0.candidate, row.0.candidate);
+            assert_eq!(decoded.0.provenance, Provenance::EXTERNAL);
+        }
+        assert!(rows[0].compare(&rows[1]).is_lt());
+    }
+
+    #[test]
+    fn compact_dp_corrupt_score_decode_rejects_underflow_overflow_and_nonmultiple() {
+        let (_, s) = setup();
+        let meta = RecordMeta {
+            session: s.identity(),
+            generation: 21,
+            file_id: [5; 16],
+            kind: DpRow::KIND,
+            order: DpRow::ORDER,
+        };
+        let valid = DpRow {
+            gain: 1,
+            covered: 26,
+            count: 1,
+            best_node: 0,
+            include_parent: u64::MAX,
+            include_depth: 1,
+        };
+        for (gain, covered) in [(27, 26), (0, u64::MAX), (0, 26)] {
+            let mut bytes = [0; 96];
+            valid.encode(meta, 0, &mut bytes[..DpRow::WIDTH]).unwrap();
+            put(&mut bytes, 0, gain);
+            put(&mut bytes, 8, covered);
+            envelope(&mut bytes[..DpRow::WIDTH], meta, 0, b"SREP-OFF-DP-v2\0");
+            assert!(DpRow::decode(meta, 0, &bytes[..DpRow::WIDTH]).is_err());
+        }
+    }
     #[test]
     fn header_count_order_identity_and_physical_length_are_checked() {
         let (c, s) = setup();
@@ -1971,7 +2132,7 @@ mod tests {
             &c,
             &r,
             OffloadPolicy {
-                io_limit: IoLimit::Finite(128 + 96),
+                io_limit: IoLimit::Finite(128 + 64),
                 ..OffloadPolicy::default()
             },
         )
@@ -1983,7 +2144,7 @@ mod tests {
             b.read_committed_cached(0, &mut cache).unwrap_err().kind(),
             crate::ErrorKind::TemporaryStorageFailure
         );
-        assert_eq!(s.io_used(), 224);
+        assert_eq!(s.io_used(), 192);
         assert_eq!(s.io_reserved(), 0);
         assert_eq!(b.committed_len(), 1);
         assert!(b.append(dp(1)).is_err());
@@ -1997,7 +2158,7 @@ mod tests {
         let mut cache = RecordPageCache::new(s.memory(), 2).unwrap();
         b.read_committed_cached(0, &mut cache).unwrap();
         b.append(dp(1)).unwrap();
-        b.file.raw().set_len(128 + 96).unwrap();
+        b.file.raw().set_len(128 + 64).unwrap();
         assert_eq!(
             b.read_committed_cached(1, &mut cache).unwrap_err().kind(),
             crate::ErrorKind::CorruptIndex

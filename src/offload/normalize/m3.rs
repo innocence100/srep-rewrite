@@ -584,7 +584,7 @@ pub(in crate::offload) struct Pass2<'a> {
     session: &'a CompressionSession,
     certificate: Certificate,
     transcript: Transcript,
-    sort: ExternalSorter<'a, IntervalRow>,
+    sort: ExternalSorter<'a, EndRow>,
     representatives: BudgetedVec<Option<CandidateRow>>,
     pending: Option<CandidateRow>,
     _control: Reservation,
@@ -608,12 +608,10 @@ impl<'a> Pass2<'a> {
         }
         spool.verify_identity(s)?;
         let control = s.memory().reserve(16384)?;
-        #[allow(unused_mut)]
-        let mut chunk_size = (s.memory().limit() / 512).clamp(1, 65536) as usize;
+        let fallback_chunk_size = (s.memory().limit() / 512).clamp(1, 65536) as usize;
+        let chunk_size = fallback_chunk_size;
         #[cfg(test)]
-        if let Some(override_size) = crate::offload::sort::test_chunk_override() {
-            chunk_size = override_size;
-        }
+        let chunk_size = crate::offload::sort::test_chunk_override().unwrap_or(chunk_size);
         let chunk = BudgetedVec::with_capacity(chunk_size, s.memory())?;
         let slots = (s.memory().limit() / 8 / std::mem::size_of::<Option<CandidateRow>>() as u64)
             .clamp(4, 262144) as usize;
@@ -625,7 +623,7 @@ impl<'a> Pass2<'a> {
             certificate: cert,
             spool,
             session: s,
-            sort: ExternalSorter::new(s, chunk, spool.len, same_destination_interval)?,
+            sort: ExternalSorter::new(s, chunk, spool.len, same_destination_end_interval)?,
             representatives,
             pending: None,
             _control: control,
@@ -650,26 +648,17 @@ impl<'a> Pass2<'a> {
             self.retain(row)?;
         }
         for row in self.representatives.iter().flatten().copied() {
-            self.sort.push(IntervalRow(row))?;
+            self.sort.push(EndRow(row))?;
         }
         drop(self.representatives);
-        let intervals = self.sort.finish()?;
+        let source = self.sort.finish()?;
         self.session.profile(
-            "m3_pass2_intervals",
-            format_args!("E={count} D={}", intervals.len()),
+            "m3_pass2_end_order",
+            format_args!("E={count} D={}", source.len()),
         );
-        let mut ends = ExternalSorter::new(
-            self.session,
-            fixed_sort_chunk::<EndRow>(self.session)?,
-            self.spool.len,
-            no_reduction,
-        )?;
-        let mut cursor = intervals.cursor()?;
-        while let Some(row) = cursor.next()? {
-            ends.push(EndRow(row.0))?;
-        }
-        let source = ends.finish()?;
         let count = source.len();
+        self.session
+            .profile("ends_ready", format_args!("D={count}"));
         Ok(ScheduledCandidates {
             source,
             count,
@@ -768,7 +757,7 @@ impl Pass2<'_> {
                 o.observed_len = o.observed_len.saturating_add(1);
                 v.set(o);
             });
-            self.sort.push(IntervalRow(evicted))?;
+            self.sort.push(EndRow(evicted))?;
         }
         self.representatives[slot] = Some(r);
         // A reintroduced row whose key matches a previously evicted key

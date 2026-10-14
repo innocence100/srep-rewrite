@@ -54,7 +54,8 @@ pub(crate) fn test_chunk_override() -> Option<usize> {
 }
 #[cfg(test)]
 fn note_leaf<T>() {
-    if std::any::type_name::<T>().contains("IntervalRow") {
+    let name = std::any::type_name::<T>();
+    if name.contains("IntervalRow") || name.contains("EndRow") {
         TEST_SORT_OBSERVATION.with(|v| {
             let mut o = v.get();
             o.interval_leaf_runs += 1;
@@ -64,7 +65,8 @@ fn note_leaf<T>() {
 }
 #[cfg(test)]
 fn note_merge<T>() {
-    if std::any::type_name::<T>().contains("IntervalRow") {
+    let name = std::any::type_name::<T>();
+    if name.contains("IntervalRow") || name.contains("EndRow") {
         TEST_SORT_OBSERVATION.with(|v| {
             let mut o = v.get();
             o.interval_merges += 1;

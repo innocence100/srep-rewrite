@@ -13,6 +13,7 @@ use super::session::CompressionSession;
 use super::storage::{DpRow, RecordPageCache, ReverseIndexRow, TypedTableBuilder};
 use crate::error::{Error, Result};
 use crate::match_ir::{Match, MatchCandidate};
+use crate::resource::BudgetedVec;
 
 const SENTINEL: u64 = u64::MAX;
 const CACHE_PAGES: usize = 2;
@@ -90,6 +91,7 @@ where
     };
     let mut candidate_cache = RecordPageCache::new(session.memory(), pages)?;
     let mut dp_cache = RecordPageCache::new(session.memory(), pages)?;
+    let predecessor_directory = build_predecessor_directory(&input, session)?;
     #[cfg(test)]
     tests::checkpoint(tests::Stage::DpCreate, session);
     let mut dp = TypedTableBuilder::<DpRow>::new(session, input_len)?;
@@ -99,8 +101,10 @@ where
         let current = input.read_cached(index, &mut candidate_cache)?.0.candidate;
         validate_schedule_candidate(current, input_len)?;
 
-        let predecessor =
-            upper_bound_predecessor(&input, index, current.dst, &mut candidate_cache)?;
+        let predecessor = match predecessor_directory.as_ref() {
+            Some(directory) => directory[current.dst as usize],
+            None => upper_bound_predecessor(&input, index, current.dst, &mut candidate_cache)?,
+        };
         if predecessor > dp.committed_len() {
             return Err(Error::corrupt_index(
                 "schedule predecessor exceeds committed DP prefix",
@@ -415,6 +419,72 @@ fn upper_bound_predecessor(
         }
     }
     Ok(low)
+}
+
+/// Reserve the optional direct lookup only from a fixed, bounded slice of free
+/// managed memory. Leave at least 16MiB and half the currently available budget
+/// for subsequent mandatory WIS work tables, whichever is larger. If the exact
+/// u64 coordinate table cannot be admitted inside this cap, retain binary search.
+fn build_predecessor_directory(
+    input: &ScheduleInput,
+    session: &CompressionSession,
+) -> Result<Option<BudgetedVec<u64>>> {
+    let Some(slots) = predecessor_directory_slots(input.input_len()) else {
+        return Ok(None);
+    };
+    let available = session
+        .memory()
+        .limit()
+        .saturating_sub(session.memory().current());
+    let headroom = (available / 2).max((16 * 1024 * 1024).min(available));
+    let usable = available.saturating_sub(headroom);
+    let wanted = u64::try_from(slots)
+        .ok()
+        .and_then(|n| n.checked_mul(std::mem::size_of::<u64>() as u64));
+    let Some(wanted) = wanted.filter(|n| *n <= usable) else {
+        return Ok(None);
+    };
+    let mut directory = match BudgetedVec::with_capacity(slots, session.memory()) {
+        Ok(value) => value,
+        Err(error) if error.kind() == crate::ErrorKind::MemoryBudgetExceeded => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    debug_assert_eq!(directory.reserved_bytes(), wanted);
+    directory.resize(slots, 0)?;
+    let mut cursor = input.cursor()?;
+    let mut next = cursor.next()?;
+    let mut prefix = 0u64;
+    for coordinate in 0..=input.input_len() {
+        session.check_cancelled()?;
+        while let Some(row) = next {
+            let candidate = row.0.candidate;
+            let end = candidate
+                .dst
+                .checked_add(candidate.len)
+                .ok_or_else(|| Error::corrupt_index("scheduled predecessor end overflows"))?;
+            if end > coordinate {
+                break;
+            }
+            prefix = prefix
+                .checked_add(1)
+                .ok_or_else(|| Error::corrupt_index("predecessor prefix overflows"))?;
+            next = cursor.next()?;
+        }
+        directory[coordinate as usize] = prefix;
+    }
+    Ok(Some(directory))
+}
+
+#[cfg(test)]
+fn predecessor_directory_admission(available: u64, wanted: u64) -> bool {
+    let headroom = (available / 2).max((16 * 1024 * 1024).min(available));
+    wanted <= available.saturating_sub(headroom)
+}
+
+fn predecessor_directory_slots(input_len: u64) -> Option<usize> {
+    input_len
+        .checked_add(1)
+        .and_then(|n| usize::try_from(n).ok())
 }
 
 fn read_live_dp(
@@ -1029,6 +1099,96 @@ mod tests {
     }
 
     #[test]
+    fn predecessor_directory_has_bounded_future_allocation_headroom() {
+        assert!(predecessor_directory_admission(
+            64 * 1024 * 1024,
+            8 * 1024 * 1024
+        ));
+        assert!(!predecessor_directory_admission(
+            64 * 1024 * 1024,
+            40 * 1024 * 1024
+        ));
+        assert!(!predecessor_directory_admission(8 * 1024 * 1024, 1));
+        assert!(predecessor_directory_admission(8 * 1024 * 1024, 0));
+        assert!(!predecessor_directory_admission(0, 1));
+    }
+
+    #[test]
+    fn predecessor_directory_slot_count_rejects_coordinate_overflow() {
+        assert_eq!(predecessor_directory_slots(0), Some(1));
+        assert_eq!(predecessor_directory_slots(524_288), Some(524_289));
+        assert_eq!(predecessor_directory_slots(u64::MAX), None);
+        if usize::BITS < 64 {
+            assert_eq!(predecessor_directory_slots(usize::MAX as u64), None);
+        }
+    }
+
+    #[test]
+    fn predecessor_directory_matches_binary_search_and_falls_back_near_budget() {
+        let (context, session, spool) = fixture();
+        let rows = [
+            candidate(0, 100, 40, 0),
+            candidate(0, 100, 50, 1),
+            candidate(0, 140, 40, 2),
+            candidate(0, 180, 40, 3),
+        ];
+        let input = prepare(&rows, &session, &spool)
+            .into_schedule_input(&session)
+            .unwrap();
+        let directory = build_predecessor_directory(&input, &session)
+            .unwrap()
+            .expect("small exact directory is admitted");
+        let mut cursor = input.cursor().unwrap();
+        let mut next = cursor.next().unwrap();
+        let mut prefix = 0u64;
+        for coordinate in 0..=input.input_len() {
+            while let Some(row) = next {
+                let candidate = row.0.candidate;
+                if candidate.dst + candidate.len > coordinate {
+                    break;
+                }
+                prefix += 1;
+                next = cursor.next().unwrap();
+            }
+            assert_eq!(
+                directory[coordinate as usize], prefix,
+                "coordinate={coordinate}"
+            );
+        }
+        drop(cursor);
+        drop(directory);
+        let remaining = session
+            .memory()
+            .limit()
+            .saturating_sub(session.memory().current());
+        let hold = session
+            .memory()
+            .reserve(remaining.saturating_sub(8))
+            .unwrap();
+        assert!(
+            build_predecessor_directory(&input, &session)
+                .unwrap()
+                .is_none()
+        );
+        drop(hold);
+        drop(input);
+        drop(session);
+        drop(spool);
+        assert_eq!(context.memory.current(), 0);
+        assert_eq!(context.temp.current(), 0);
+    }
+
+    #[test]
+    fn predecessor_directory_slot_conversion_handles_boundaries() {
+        assert_eq!(predecessor_directory_slots(0), Some(1));
+        assert_eq!(predecessor_directory_slots(524_288), Some(524_289));
+        assert_eq!(predecessor_directory_slots(u64::MAX), None);
+        if usize::BITS < 64 {
+            assert_eq!(predecessor_directory_slots(usize::MAX as u64), None);
+        }
+    }
+
+    #[test]
     fn recurrence_prefers_gain_and_emits_destination_order() {
         let rows = [
             candidate(0, 100, 60, 0),
@@ -1501,7 +1661,7 @@ mod tests {
     #[test]
     fn live_dp_out_of_prefix_and_io_failure_remain_poisoned_on_cache_hits() {
         use super::super::storage::FixedRecord;
-        assert_eq!(DpRow::WIDTH, 96);
+        assert_eq!(DpRow::WIDTH, 64);
         for io_fault in [false, true] {
             let (_, session, _) = fixture();
             let mut cache = RecordPageCache::new(session.memory(), CACHE_PAGES).unwrap();
