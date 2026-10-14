@@ -4,14 +4,15 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-Two distinct, unrelated efforts are in flight after the 0.2.0 release:
+Two distinct, unrelated efforts followed the 0.2.0 release:
 
 - **Documentation closeout (this branch).** Clarification of the already-published
   releases: correcting stale candidate/unreleased wording, recording accurate
   install/release links, runtime requirements, and acceptance evidence, and
   separating archived historical local evidence from final actual-package
   results. This is documentation only and makes no new functionality claim.
-- **Sparse-input optimization (locally verified; pending review).** Internal m3
+- **Sparse-input optimization (source R-P3 and native/CI validation passed;
+  final evidence review R-P4 PASS, optimization round 4/5, global 7).** Internal m3
   end-order fusion, authenticated compact sort/DP rows, and a bounded optional
   predecessor directory are implemented. On a same-host frozen sample-07 m3
   comparison, the archive is byte-identical to the v0.2.0 release; elapsed
@@ -28,9 +29,16 @@ Two distinct, unrelated efforts are in flight after the 0.2.0 release:
   original 59-test sparse benchmark harness. After the S1 launch-window fix,
   the final harness integration check passed all 66 tests (17.700 s); both
   retained same-host profiles were revalidated successfully with unchanged raw
-  artifacts. These changes are unreleased and still pending R-P3 independent
-  source review and native release validation; no
-  optimization is accepted or published.
+  artifacts. Source R-P3 review is PASS; final evidence review R-P4 is PASS
+  (optimization round 4/5, global 7). Native release plus push-CI runs each
+  passed all six jobs on source/tooling commit
+  `4af679fd4292c3f864db1eb717e48f504e58e78a`. This is unreleased development work: no new
+  version tag, release, or published package was created. The CI package
+  artifacts are verification outputs labeled 0.2.0 and are not replacements for
+  or identical claims about the already-published v0.2.0 assets. See
+  `docs/evidence/post020-sparse-investigation.md` for exact per-profile counts,
+  ignored tests, run links, and artifact evidence. Nothing here changes the
+  published release record.
 
 ## 0.2.0 — 2026-10-10 (published limited prerelease)
 

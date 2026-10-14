@@ -5,9 +5,11 @@
 Task P1 was to materially reduce elapsed time and managed temporary peak for
 frozen `fidelity-v1-07` while retaining the exact finder, validation,
 normalization, WIS, archive, and resource contracts. This investigation is
-**partial success; 4-GiB m3 fit was a parent stretch target, not the assignment
-gate**. Exact pipeline and scheduler optimizations were measured: the unchanged
-four-match archive result was reproduced, managed temp peak fell from
+**implementation accepted; source R-P3, native/CI gates, and final evidence
+review R-P4 passed (optimization round 4/5, global 7). The 4-GiB m3 fit was a
+parent stretch target, not the assignment gate**. Exact pipeline and scheduler
+optimizations were measured: the unchanged four-match archive result was
+reproduced, managed temp peak fell from
 9,646,868,416 to 6,029,489,688 B, and elapsed time fell from 10,638.203 to
 4,298.326 s in a controlled same-host comparison whose two binaries are both
 Rust 1.88.0 builds (the host default toolchain is 1.96.0; see
@@ -17,6 +19,9 @@ managed temp peak, 6,029,489,688 B (5.615400 GiB), still exceeds the unchanged
 with `SREP_E_TEMP_LIMIT`; the final candidate itself was not re-run at 4 GiB.
 
 The assignment tree began clean at `6ce0a32b83c625519a427c0d3365e0abfee22d7e`.
+The reviewed candidate/source and release-tooling identity is
+`4af679fd4292c3f864db1eb717e48f504e58e78a`; its production-source diff SHA-256
+is `0e8d8c1ee23565c09115b00074821270d4c12222066efcaf7862ec4465dc4bca`.
 The initial cache-sizing experiment was reverted after it failed to help. The
 implemented changes are exact representation and ordering transformations:
 m3 feeds its distinct representative intervals directly to the exact end-order
@@ -108,7 +113,7 @@ prototype of group-compressed WIS was not retained: an early implementation
 failed the exhaustive brute-force oracle and existing fault-order tests, so it
 was removed rather than weakening those tests or leaving an unverified route.
 
-## Remaining work
+## Follow-up opportunities (not blockers to completed source/native gates)
 
 The 32-GiB diagnostic still peaks above the 4-GiB default; further exact storage
 reduction or a proven streaming external-memory WIS design could improve temp
@@ -164,7 +169,24 @@ exit 0 at MSRV Rust 1.88.0, the source diff SHA-256 was unchanged
 `0e8d8c1ee23565c09115b00074821270d4c12222066efcaf7862ec4465dc4bca`, the
 all-target suite recorded 498 passed / 0 failed / 2 ignored across 26 targets
 per run (the library target alone is 258 plus 1 ignored, not the whole total),
-six release timing gates passed, and the current sparse harness passed 59/59.
+and six release timing gates passed. The V1 sparse harness had 59/59 tests; the
+later final integration check recorded under `r2-harness` passed 66/66 tests.
 Record: `/tmp/opencode/srep-post020-verify/status.json` (SHA-256
-`ea26cbd856a7ce444f3ba370075c13d36c78fac7997a6458a53a495549e8807e`). Native
-Windows/macOS GitHub Actions and R-P2 review remain pending.
+`ea26cbd856a7ce444f3ba370075c13d36c78fac7997a6458a53a495549e8807e`).
+
+Native release workflow [run 38510825260](https://github.com/innocence100/srep-rewrite/actions/runs/38510825260)
+and push CI [run 38510825006](https://github.com/innocence100/srep-rewrite/actions/runs/38510825006)
+both completed successfully, six of six jobs each, on source/tooling commit
+`4af679fd4292c3f864db1eb717e48f504e58e78a`. Native optimized-test steps and
+timing gates passed for Linux, Windows MSVC, and macOS ARM64 with stable and
+Rust 1.88.0. Every suite's per-target totals, profile (debug/release), elapsed
+time, ignored-test identities, artifact provenance, and smoke evidence are
+recorded in `docs/evidence/post020-sparse-investigation.md` and the external
+receipt `/tmp/opencode/srep-post020-native/verification-receipt.json`.
+
+Source R-P3, both CI runs, and independent final evidence review R-P4 are PASS;
+the implementation task is accepted. The source change remains unreleased. CI artifacts are
+verification outputs named for manifest version 0.2.0, not replacements for or
+byte-identity claims about published v0.2.0 assets. No new release, tag, or
+published package was created. Historical source-baseline and benchmark
+bindings above remain as originally recorded.

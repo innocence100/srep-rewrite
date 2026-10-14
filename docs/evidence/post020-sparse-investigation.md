@@ -1,13 +1,16 @@
 # P1 sparse optimization implementation and evidence
 
-Status: **LOCAL INTEGRATION RECORD — durable local verification passed; pending
-independent R-P3 review and native CI**. Exact candidate and output semantics
-were preserved. A controlled same-host sample07 m3 comparison, a full72 fidelity
-re-evaluation, a 258-MiB round trip, and a durable all-target/CLI verification
-run are recorded below with specific artifacts. The final sample07 m3 candidate
-still peaks above the unchanged 4-GiB temp default; that fit was a parent
-stretch target, with no changed resource default and no 4-GiB pass claim.
-Native Windows/macOS validation remains the only pending local gate.
+Status: **SOURCE R-P3 REVIEW PASS; native release and push CI PASS (6/6 jobs
+each); final evidence review R-P4 PASS (optimization round 4/5, global 7)**.
+Exact candidate and
+output semantics were preserved. A controlled same-host sample07 m3 comparison,
+a full72 fidelity re-evaluation, a 258-MiB round trip, and a durable
+all-target/CLI verification run are recorded below with specific artifacts. The
+final sample07 m3 candidate still peaks above the unchanged 4-GiB temp default;
+that fit was a parent stretch target, with no changed resource default and no
+4-GiB pass claim.
+Native Windows/macOS validation was completed by native GitHub Actions runners;
+no Windows/macOS binary was executed on this Linux host.
 
 ## Identity and environment
 
@@ -313,11 +316,85 @@ passed. No Rust suites were repeated because the Rust source is unchanged. This
 refreshes harness/profile validation only; it does not alter the V1 25-command
 evidence or any retained benchmark report/profile.
 
-### Native and review status
+### Native and regular CI evidence (source R-P3 and final evidence R-P4 PASS)
 
-Native Windows/macOS validation was not run on this Linux host and remains
-subject to GitHub Actions evidence; it is the only remaining local verification
-gate. The P1 source changes remain unreleased and pending R-P3 review; no
-optimization is accepted or published. Published release reports/assets and the
-published-release documentation were not changed; only the allowed Unreleased
-changelog entry was updated.
+Both workflows checked out immutable source and release tooling at
+`4af679fd4292c3f864db1eb717e48f504e58e78a` (the reviewed production-source diff
+from `6ce0a32b83c625519a427c0d3365e0abfee22d7e` remains SHA-256
+`0e8d8c1ee23565c09115b00074821270d4c12222066efcaf7862ec4465dc4bca`). All six
+jobs succeeded in each run; no required job was skipped or failed:
+
+* Native release workflow run [38510825260](https://github.com/innocence100/srep-rewrite/actions/runs/38510825260),
+  source `4af679fd4292c3f864db1eb717e48f504e58e78a`: six native host/toolchain
+  checks and optimized test steps passed. The three Rust 1.88.0 jobs also passed
+  package/extract smoke and uploaded their platform artifacts. Stable matrix
+  entries intentionally do not package/upload artifacts; those skipped
+  per-step packaging actions are not skipped required jobs.
+* Push CI run [38510825006](https://github.com/innocence100/srep-rewrite/actions/runs/38510825006),
+  same source SHA: `windows-test`, `verify`, and all four native OS/toolchain
+  test jobs passed. `verify` includes independent debug and release all-target
+  profiles; both are recorded separately below.
+
+The counts below are sums of every Cargo test-target summary line in each
+profile, not just the `src/lib.rs` target. Per-target distribution differs by
+host. Each all-target profile has 26 summaries (258/0/1 is the library target,
+not the overall count); ignored tests in both all-target runs are
+`offload::generation_tests::profile_sample03_m3_intervals_only` (manual
+sample03 enumeration-volume diagnostic) and
+`stage8::ignored_m1_finder_discovers_a_match_across_256_mib_history` (manual
+>256-MiB m1 finder acceptance). The first is unrelated to archive/validation
+bypass and the second is the long manual history diagnostic; neither is an
+asserted all-target test result. CI `verify` doc-tests have 0 passed/0 failed/2
+ignored and are separately summarized below.
+
+| Workflow / job profile | Host / target | Rust | 26-target all-target total (passed / failed / ignored) | Sum of target seconds |
+| --- | --- | --- | ---: | ---: |
+| Native release `115678691489` | Ubuntu / x86_64 Linux | 1.88.0 | 498 / 0 / 2 | 283.33 |
+| Native release `115678691528` | macOS / aarch64 Darwin | 1.88.0 | 499 / 0 / 2 | 411.53 |
+| Native release `115678691531` | Windows / x86_64 MSVC | 1.88.0 | 493 / 0 / 2 | 425.13 |
+| Native release `115678691545` | Ubuntu / x86_64 Linux | stable | 498 / 0 / 2 | 256.74 |
+| Native release `115678691582` | macOS / aarch64 Darwin | stable | 499 / 0 / 2 | 394.38 |
+| Native release `115678691408` | Windows / x86_64 MSVC | stable | 493 / 0 / 2 | 489.51 |
+| Push CI `115678686639` | Ubuntu / x86_64 Linux | 1.88.0 | 498 / 0 / 2 | 2446.38 |
+| Push CI `115678686688` | macOS / aarch64 Darwin | 1.88.0 | 499 / 0 / 2 | 5663.31 |
+| Push CI `115678686725` | Windows / x86_64 MSVC | 1.88.0 | 493 / 0 / 2 | 1773.16 |
+| Push CI `115678686486` | macOS / aarch64 Darwin | stable | 499 / 0 / 2 | 5473.99 |
+| Push CI `115678686372` | Windows / windows-test (GNU target checks plus native Windows tests) | stable | 493 / 0 / 2 | 2477.45 |
+| Push CI `115678686452` | Ubuntu / x86_64 Linux `verify`, debug profile | stable | 498 / 0 / 2 | 1169.48 |
+| Push CI `115678686452` | Ubuntu / x86_64 Linux `verify`, release profile | stable | 498 / 0 / 2 | 215.62 |
+
+The native-release run's `optimized native tests without weakening timing
+assertions` step passed in all six jobs. These are the workflow's optimized
+release tests and their configured timing gates; no assertion was weakened.
+The CI matrix counts are an additional debug/test evidence profile, not
+substitute figures for those optimized native-release results.
+
+### Native package validation and preservation
+
+The native workflow's three uploaded development artifacts each contain a
+package archive and accompanying `smoke.json`. Each smoke record shows version
+`srep 0.2.0`, two successful round trips, ten successful CLI steps, matching
+input/restored hashes, and all steps exit 0. The archives contain platform
+binary, `BUILD-PROVENANCE.json`, `LICENSE`, `NOTICES`, `README.md`,
+`PLATFORM-README.md`, `CHANGELOG.md`, `THIRD_PARTY.md`, and `THIRD_PARTY.audit`.
+Embedded provenance binds source and tooling to
+`4af679fd4292c3f864db1eb717e48f504e58e78a`, clean worktrees, and version
+0.2.0. The run API's SHA-256 is for the enclosing Actions artifact; separate
+SHA-256 values in the evidence receipt are for the extracted package archive,
+and each package's `SHA256SUMS` agrees with that archive digest.
+
+These are **unreleased development-CI artifacts**, version-labeled 0.2.0 for
+the tested manifest. They are not the published v0.2.0 packages and must not
+be represented as replacements or identical bytes. No tag/release/asset write
+occurred. At native evidence capture, `main` was
+`f77e1068085446687b2dc30c6ebec004c9a098f1`; post-review fast-forward handling
+is separate and is not asserted here. At capture, the v0.1.0, v0.1.1, and
+v0.2.0 release assets and refs matched the prior publication receipt.
+
+Raw run/job JSON, Actions log ZIPs, extracted native artifacts, and a structured
+per-job receipt are preserved outside the repository under
+`/tmp/opencode/srep-post020-native/`; the structured receipt is
+`verification-receipt.json` (the chronological native-evidence receipt predates
+the final R-P4 verdict). Source implementation acceptance is complete; the
+optimization remains unreleased. No optimization release, version tag, or new
+published package is claimed.
