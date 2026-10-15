@@ -4,13 +4,22 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-Two distinct, unrelated efforts followed the 0.2.0 release:
+The 0.2.1 release candidate includes the accepted sparse-input optimization.
+Version 0.2.1 has not been published; native-package and exact-package acceptance
+gates remain pending. This source-level implementation is summarized in
+[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md), and inherited measurements
+are distinguished from fresh 0.2.1 package evidence in
+[`docs/evidence/v0.2.1-preparation.md`](docs/evidence/v0.2.1-preparation.md).
 
-- **Documentation closeout (this branch).** Clarification of the already-published
-  releases: correcting stale candidate/unreleased wording, recording accurate
-  install/release links, runtime requirements, and acceptance evidence, and
-  separating archived historical local evidence from final actual-package
-  results. This is documentation only and makes no new functionality claim.
+Two distinct, unrelated efforts followed the 0.2.0 release; the optimization
+below is included in the 0.2.1 candidate, while the documentation closeout was a
+separate 0.2.0 documentation revision:
+
+- **Documentation closeout (the 0.2.0 documentation revision).** Clarification
+  of the already-published releases: correcting stale candidate/unreleased
+  wording, recording accurate install/release links, runtime requirements, and
+  acceptance evidence, and separating archived historical local evidence from
+  final actual-package results. It made no functionality claim.
 - **Sparse-input optimization (source R-P3 and native/CI validation passed;
   final evidence review R-P4 PASS, optimization round 4/5, global 7).** Internal m3
   end-order fusion, authenticated compact sort/DP rows, and a bounded optional
@@ -32,10 +41,11 @@ Two distinct, unrelated efforts followed the 0.2.0 release:
   artifacts. Source R-P3 review is PASS; final evidence review R-P4 is PASS
   (optimization round 4/5, global 7). Native release plus push-CI runs each
   passed all six jobs on source/tooling commit
-  `4af679fd4292c3f864db1eb717e48f504e58e78a`. This is unreleased development work: no new
-  version tag, release, or published package was created. The CI package
-  artifacts are verification outputs labeled 0.2.0 and are not replacements for
-  or identical claims about the already-published v0.2.0 assets. See
+  `4af679fd4292c3f864db1eb717e48f504e58e78a`. The optimization is included in
+  the v0.2.1 candidate, but this preparation has not produced a new version tag,
+  release, or published package. The CI package artifacts are verification
+  outputs labeled 0.2.0 and are not replacements for or identical claims about
+  either the already-published v0.2.0 assets or future v0.2.1 packages. See
   `docs/evidence/post020-sparse-investigation.md` for exact per-profile counts,
   ignored tests, run links, and artifact evidence. Nothing here changes the
   published release record.

@@ -28,7 +28,7 @@ The current normative wire specification is [`docs/FORMAT-V3.md`](docs/FORMAT-V3
 they are not current NGv2 contracts. The frozen design remains relevant only
 where NGv3 explicitly inherits matching and resource semantics.
 
-## Install a 0.2.0 native release artifact
+## Install the published 0.2.0 native release artifact
 
 Version **0.2.0** is published as a **limited prerelease** on GitHub:
 
@@ -107,6 +107,15 @@ No other platforms were built or tested for 0.2.0. The published 0.1.0 and
 `039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401`.
 
 ## Build from source
+
+This branch prepares software version **0.2.1**; that version is not yet a
+published release. Its native binaries and the 72-row final-XZ fidelity run on
+those exact binaries are pending. The accepted sparse-input m3 optimization is
+included in this source, but the measurements described below are inherited
+development evidence—not measurements of a freshly built 0.2.1 package. See
+[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md) for the candidate scope and
+release gates. Until publication is separately verified, use the published 0.2.0
+assets and their recorded checksums above.
 
 Rust **1.88.0** is the declared minimum supported Rust version. A locked
 source build on Linux is:
