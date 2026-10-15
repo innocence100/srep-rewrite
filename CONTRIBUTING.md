@@ -34,22 +34,24 @@ Before submitting code changes, use the repository's applicable formatting,
 lint, test, documentation, and release-smoke checks. Native Windows and macOS
 compile, link, and test evidence must come from GitHub Actions on the relevant
 native runners. A Linux cross-compilation check is only a compile hint and is
-not Windows or macOS verification. The published 0.2.0 packages target Linux
+not Windows or macOS verification. The published 0.2.1 packages target Linux
 x86_64 glibc, Windows x86_64 MSVC, and macOS ARM64. Measure runtime requirements
 on each actual package; the historical 0.1.0 GLIBC_2.30 observation does not
-prove the compatibility of a new build, and the 0.2.0 Linux package's observed
-GLIBC_2.34 floor is likewise only an observed value for that artifact.
+prove the compatibility of a new build, and the 0.2.0 and 0.2.1 Linux packages'
+observed GLIBC_2.34 floor is likewise only an observed value for those
+artifacts.
 
 For documentation-only changes, perform read-only checks that do not rebuild or
 rewrite shared artifacts. In particular, verify that examples use the current
 CLI names, that `CHANGELOG.md` keeps any genuinely new work under `Unreleased`
 until publication (published releases carry their real publication date and
 status; historical notes must remain labeled as history, not as current release
-claims), and that the completed 0.2.0 actual-package 72-row comparison is not
-misrepresented as universal quality or performance. The archived local candidate
-evidence and the final actual-package results are separate records; do not merge
-them. The historical 0.1.0 default-m3 round trip is recorded in the release notes
-as a correctness check; do not turn those raw timings into a performance claim.
+claims), and that the completed actual-package 72-row comparisons (0.2.0 and
+0.2.1) are not misrepresented as universal quality or performance. The archived
+local candidate evidence and the final actual-package results are separate
+records; do not merge them. The historical 0.1.0 default-m3 round trip is
+recorded in the release notes as a correctness check; do not turn those raw
+timings into a performance claim.
 
 ## Archive safety
 
@@ -117,8 +119,8 @@ policy"). The separate `ci.yml` debug-profile checks remain unchanged in command
 structure and intentionally run the functional path at debug speed; a genuine
 failure there must be reported, not relabeled as a release-profile pass. Do not
 describe a release as published without an actual, verified artifact. The
-already-published 0.2.0 and 0.1.1 releases remain as published; do not repack,
-move tags, or rewrite their assets.
+already-published 0.2.1, 0.2.0, 0.1.1, and 0.1.0 releases remain as published; do
+not repack, move tags, or rewrite their assets.
 
 Push builds use the workflow commit (`github.sha`) for both source and tooling.
 Manual dispatch requires an explicit source ref, full expected source SHA, and

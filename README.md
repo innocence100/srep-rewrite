@@ -1,7 +1,7 @@
 # SREP-NG
 
 SREP-NG is a clean-room Rust implementation of the SuperREP preprocessor. In
-software release **0.2.0**, the current archive format is **SREP-NG v3
+software release **0.2.1**, the current archive format is **SREP-NG v3
 (NGv3)**. NGv3 is the format written by this project and the format read by
 default.
 
@@ -28,26 +28,26 @@ The current normative wire specification is [`docs/FORMAT-V3.md`](docs/FORMAT-V3
 they are not current NGv2 contracts. The frozen design remains relevant only
 where NGv3 explicitly inherits matching and resource semantics.
 
-## Install the published 0.2.0 native release artifact
+## Install the published 0.2.1 native release artifact
 
-Version **0.2.0** is published as a **limited prerelease** on GitHub:
+Version **0.2.1** is published as a **limited prerelease** on GitHub:
 
-<https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.0>
+<https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1>
 
-It was published **2026-10-10T02:19:26Z** from source commit
-`6ce0a32b83c625519a427c0d3365e0abfee22d7e` (annotated tag
-`eb4d54deee5db1c0a1335f880a6b16aeaceead99`). It is marked `prerelease`, and
+It was published **2026-10-15T19:03:54Z** (release id `414169555`) from source
+commit `6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed` (annotated tag
+`c11c8ce3f3f550521f9b3e952481a75c92a5d0fb`). It is marked `prerelease`, and
 `releases/latest` does not point to it. The release carries three native
 platform archives for Linux x86_64, Windows x86_64 MSVC, and macOS ARM64, plus
 its evidence and checksum assets. Exact target, source, compiler, hash, and
 runtime details come from each package's `BUILD-PROVENANCE.json` and `NOTICES`.
 Download URLs, hashes, and caveats are collected in
-[`docs/evidence/v0.2.0-publication.md`](docs/evidence/v0.2.0-publication.md).
+[`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
 
 ```text
-srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz
-srep-v0.2.0-x86_64-pc-windows-msvc.zip
-srep-v0.2.0-aarch64-apple-darwin.tar.gz
+srep-v0.2.1-x86_64-unknown-linux-gnu.tar.gz
+srep-v0.2.1-x86_64-pc-windows-msvc.zip
+srep-v0.2.1-aarch64-apple-darwin.tar.gz
 ```
 
 These are the three published native archives. Each archive has one directory
@@ -66,56 +66,61 @@ BUILD-PROVENANCE.json
 PLATFORM-README.md
 ```
 
+The package-embedded `README.md` and `CHANGELOG.md` are pre-publication
+snapshots at `6f1357fc` and were intentionally not rewritten; the archives were
+not repacked after the build.
+
 `SHA256SUMS` is distributed beside the tarball, not inside it. Verify the
 download before unpacking or running it:
 
 ```sh
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz
-cd srep-v0.2.0-x86_64-unknown-linux-gnu
+tar -xzf srep-v0.2.1-x86_64-unknown-linux-gnu.tar.gz
+cd srep-v0.2.1-x86_64-unknown-linux-gnu
 ./srep --version
 ./srep --help
 ```
 
-Windows PowerShell: run `Get-FileHash .\srep-v0.2.0-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
+Windows PowerShell: run `Get-FileHash .\srep-v0.2.1-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
 and compare with the matching `SHA256SUMS` entry before using `Expand-Archive`.
 In the extracted directory run `.\srep.exe --version` and `.\srep.exe --help`.
 This is an x86_64 MSVC package, not an ARM64 or MinGW package.
 
-On Apple Silicon macOS, run `shasum -a 256 srep-v0.2.0-aarch64-apple-darwin.tar.gz`
+On Apple Silicon macOS, run `shasum -a 256 srep-v0.2.1-aarch64-apple-darwin.tar.gz`
 and compare with the matching entry before unpacking with `tar -xzf`.
 In the extracted directory run `./srep --version` and `./srep --help`.
 The macOS package is ARM64, not Intel/universal. Packages are not publisher
 code-signed or notarized. macOS may require explicit approval in Privacy &
 Security after verification; do not disable Gatekeeper globally.
 
-Observed 0.2.0 runtime requirements from the actual published packages:
+Observed 0.2.1 runtime requirements from the actual published packages:
 
 - **Linux x86_64 glibc:** requires at least **GLIBC_2.34** as observed from the
   binary's GLIBC symbol versions (built on Ubuntu; an observed floor, not a
   guarantee for every environment). A host with an older glibc, such as
   glibc 2.31, cannot load this binary.
 - **Windows x86_64 MSVC:** native PE32+ x86_64 MSVC binary (not ARM64, not
-  MinGW); unsigned.
+  MinGW); observed imports include `VCRUNTIME140.dll` and Windows API-set
+  runtime libraries.
 - **macOS ARM64:** native arm64 Mach-O (not Intel/universal); not publisher
   code-signed and not notarized. It carries an ad-hoc Rust code signature (an
   `LC_CODE_SIGNATURE` with CodeDirectory flags `0x20002` / `CS_ADHOC`); an
   ad-hoc signature does not authenticate a publisher identity.
 
-No other platforms were built or tested for 0.2.0. The published 0.1.0 and
-0.1.1 releases are historical and unchanged; the 0.1.0 Linux tarball SHA-256 is
+No other platforms were built or tested for 0.2.1. The published v0.1.0, v0.1.1,
+and v0.2.0 releases are historical and unchanged; the 0.1.0 Linux tarball
+SHA-256 is
 `039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401`.
 
 ## Build from source
 
-This branch prepares software version **0.2.1**; that version is not yet a
-published release. Its native binaries and the 72-row final-XZ fidelity run on
-those exact binaries are pending. The accepted sparse-input m3 optimization is
-included in this source, but the measurements described below are inherited
-development evidence—not measurements of a freshly built 0.2.1 package. See
-[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md) for the candidate scope and
-release gates. Until publication is separately verified, use the published 0.2.0
-assets and their recorded checksums above.
+Software version **0.2.1** is published; its native binaries and the 72-row
+final-XZ fidelity run on the published Linux package binary are recorded in
+[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md) and
+[`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
+The accepted sparse-input m3 optimization is included in this source. The
+planned 0.3.0 automatic resource policy is not implemented and changes none of
+the current defaults.
 
 Rust **1.88.0** is the declared minimum supported Rust version. A locked
 source build on Linux is:
@@ -218,7 +223,30 @@ candidate binary (`996dcecf…`), while the release evidence was produced on the
 published, committed Linux package binary (`38a3a045…`). See
 [`docs/evidence/v0.2.0-publication.md`](docs/evidence/v0.2.0-publication.md).
 
+Version 0.2.1 is the current published release. It carries the accepted
+sparse-input m3 optimization with NGv3 and matching semantics unchanged. Its
+final actual-package 72-row comparison on the published Linux binary
+(`8350d23f…`) completed 72/72 byte-identical round trips under the same
+`majority-final-xz-v1` gate (65 wins / 0 ties / 7 losses; m0 11/12, m1 10/12,
+m2 9/12, m3 12/12, m4 12/12, m5 11/12), with an explicit 256 MiB memory and
+32 GiB temp allowance. The managed temp peak (5.615400 GiB) remains above the
+unchanged 4 GiB default; no 4-GiB completion and no process-RSS cap are claimed.
+See [`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
+
 ## Evidence and release status
+
+Version 0.2.1 was published as a limited prerelease on 2026-10-15T19:03:54Z
+from commit `6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed` (release id `414169555`).
+The native packaging run
+[`38703862425`](https://github.com/innocence100/srep-rewrite/actions/runs/38703862425)
+passed 6/6 jobs; the CI run
+[`38703862408`](https://github.com/innocence100/srep-rewrite/actions/runs/38703862408)
+passed 6/6 jobs on a failed-jobs-only rerun after its initial macOS MSRV attempt
+ended with a lost-runner-communication annotation and no more specific cause
+established. All 9 release assets download and verify; the three native archives
+and the fresh actual-package evidence are summarized, with per-asset hashes and
+download URLs, in
+[`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
 
 Version 0.2.0 was published as a limited prerelease on 2026-10-10T02:19:26Z
 from commit `6ce0a32b83c625519a427c0d3365e0abfee22d7e`. The native packaging run

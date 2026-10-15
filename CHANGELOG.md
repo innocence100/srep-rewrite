@@ -4,51 +4,76 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-The 0.2.1 release candidate includes the accepted sparse-input optimization.
-Version 0.2.1 has not been published; native-package and exact-package acceptance
-gates remain pending. This source-level implementation is summarized in
-[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md), and inherited measurements
-are distinguished from fresh 0.2.1 package evidence in
-[`docs/evidence/v0.2.1-preparation.md`](docs/evidence/v0.2.1-preparation.md).
+Planned 0.3.0 work: an automatic resource policy / resource defaults. This is a
+**plan only**. No 0.3.0 feature, resource-policy behavior, default change, version
+tag, or package is implemented or released here, and nothing in 0.2.1 changes the
+existing 256 MiB managed-memory or 4 GiB temp-limit defaults. The current
+release boundary is described in
+[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md).
 
-Two distinct, unrelated efforts followed the 0.2.0 release; the optimization
-below is included in the 0.2.1 candidate, while the documentation closeout was a
-separate 0.2.0 documentation revision:
+## 0.2.1 — 2026-10-15 (published limited prerelease)
 
-- **Documentation closeout (the 0.2.0 documentation revision).** Clarification
-  of the already-published releases: correcting stale candidate/unreleased
-  wording, recording accurate install/release links, runtime requirements, and
-  acceptance evidence, and separating archived historical local evidence from
-  final actual-package results. It made no functionality claim.
-- **Sparse-input optimization (source R-P3 and native/CI validation passed;
-  final evidence review R-P4 PASS, optimization round 4/5, global 7).** Internal m3
-  end-order fusion, authenticated compact sort/DP rows, and a bounded optional
-  predecessor directory are implemented. On a same-host frozen sample-07 m3
-  comparison, the archive is byte-identical to the v0.2.0 release; elapsed
-  compression fell from 10,638.203 s to 4,298.326 s and managed temp peak fell
-  from 9,646,868,416 B to 6,029,489,688 B. Both compared binaries are Rust
-  1.88.0 builds even though the host default toolchain is 1.96.0, and the
-  measurement was serial. The final candidate's peak (5.615400 GiB) still
-  exceeds the unchanged 4-GiB default, and an earlier interim 4-GiB probe failed
-  with `SREP_E_TEMP_LIMIT`; the final candidate was not re-run at 4 GiB, no
-  default was raised, and no 4-GiB pass is claimed. A durable local verification
-  pass (all 25 commands exit 0, MSRV 1.88.0) recorded the all-target suite at 498
-  passed / 0 failed / 2 ignored across 26 targets per run, with the library
-  target alone at 258, plus full72 fidelity, the 258-MiB round trip, and the
-  original 59-test sparse benchmark harness. After the S1 launch-window fix,
-  the final harness integration check passed all 66 tests (17.700 s); both
-  retained same-host profiles were revalidated successfully with unchanged raw
-  artifacts. Source R-P3 review is PASS; final evidence review R-P4 is PASS
-  (optimization round 4/5, global 7). Native release plus push-CI runs each
-  passed all six jobs on source/tooling commit
-  `4af679fd4292c3f864db1eb717e48f504e58e78a`. The optimization is included in
-  the v0.2.1 candidate, but this preparation has not produced a new version tag,
-  release, or published package. The CI package artifacts are verification
-  outputs labeled 0.2.0 and are not replacements for or identical claims about
-  either the already-published v0.2.0 assets or future v0.2.1 packages. See
-  `docs/evidence/post020-sparse-investigation.md` for exact per-profile counts,
-  ignored tests, run links, and artifact evidence. Nothing here changes the
-  published release record.
+**Status: PUBLISHED as a limited prerelease.** Release
+<https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1>, id
+`414169555`, published 2026-10-15T19:03:54Z from source commit
+`6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed` (annotated tag
+`c11c8ce3f3f550521f9b3e952481a75c92a5d0fb`, which peels to that commit). It is
+marked `prerelease` and is not the repository's `latest` release. All nine
+assets (three native archives plus six evidence/checksum assets) download and
+verify; the native packaging run `38703862425` passed 6/6 jobs, and the CI run
+`38703862408` passed 6/6 jobs on a failed-jobs-only rerun after its initial
+macOS MSRV attempt ended with a GitHub lost-runner-communication annotation and
+no more specific cause established. Hashes, download URLs, runtime notes, and
+caveats are in
+[`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
+
+- Sparse-input m3 optimization (source R-P3 review PASS; final evidence review
+  R-P4 PASS): end-order fusion during pass 2, compact authenticated
+  candidate/DP rows, and a bounded optional predecessor directory. NGv3 and
+  matching semantics are unchanged. On a same-host frozen sample-07 (512 KiB) m3
+  comparison of **v0.2.0-labelled binaries**, the archive is byte-identical to
+  the v0.2.0 release; elapsed compression fell from 10,638.203 s to 4,298.326 s
+  and managed temp peak fell from 9,646,868,416 B to 6,029,489,688 B. That
+  comparison is **inherited development evidence**, not a measurement of the
+  0.2.1 package, and is not generalized to other inputs. The measured candidate
+  peak still exceeds the unchanged 4-GiB default; no 4-GiB pass is claimed and no
+  default was raised. See `sparse-optimization-inherited.json` and
+  `docs/evidence/post020-sparse-investigation.md`.
+- Actual-package acceptance on the downloaded Linux package binary
+  `8350d23f7f7c13af96cd1deb156ff6e10554bcbd993726c12c0e549a2b942b0e` (`srep
+  0.2.1`) under explicit `--memory 256MiB --temp-limit 32GiB`: 72/72 rows
+  completed with byte-identical round trips; `majority-final-xz-v1` PASS — m0
+  11/12, m1 10/12, m2 9/12, m3 12/12, m4 12/12, m5 11/12, global 65 wins / 0
+  ties / 7 losses, `coverage_geomean ≥ 0.95` for all six (minimum observed
+  `0.999748156801`); all 72 per-row final-XZ sizes reproduced the accepted
+  optimization candidate's measurements. Managed temp peak was 6,029,489,688 B
+  (5.615400 GiB), above the unchanged 4 GiB default; managed RAM peak was
+  268435456 B. `--memory` is managed working memory, not a cap on process RSS.
+  Report `fidelity-report-release.json`, SHA-256 `85e29e01…`.
+- 258 MiB default-settings m3/index/xxh3 round trip on the same package: PASS,
+  no method/layout/checksum, memory, or temp-limit override (`--temp-dir` only);
+  input/output SHA-256
+  `c6c2c4a0735a006faf10ffec7dce05ecd23366a5da071f5d5dfdb3b0eb38f0a8`; archive
+  SHA-256 `1bfa2d31be0afbf0880f5a0e4098f9c593b9f643a50523c03b84db4d81f44fc9`.
+  Report `large-report-release.json`, SHA-256 `161c6db3…`.
+- Native all-target test totals per platform on the six-job run (both the 1.88.0
+  and stable jobs, 26 targets each): Linux x86_64 498 passed / 0 failed / 2
+  ignored; Windows x86_64 MSVC 493 / 0 / 2; macOS ARM64 499 / 0 / 2. The Windows
+  job reported the GNU linker unavailable, so no GNU/MinGW runtime coverage is
+  claimed.
+- Observed runtime requirements: Linux max GLIBC symbol requirement
+  **GLIBC_2.34** (built on Ubuntu 24.04/glibc 2.39; acceptance ran the unmodified
+  binary in an Ubuntu 24.04 container because the glibc 2.31 host cannot load
+  it); Windows native PE32+ MSVC (`VCRUNTIME140.dll` and API-set imports; not
+  ARM64/MinGW); macOS ARM64 native, not publisher code-signed and not notarized,
+  carrying an ad-hoc Rust signature (`LC_CODE_SIGNATURE`, flags `0x20002`).
+- The published packages' embedded `README.md`/`CHANGELOG.md` are
+  pre-publication snapshots at `6f1357fc` and were intentionally not repacked.
+- The separate 0.2.0 documentation closeout (runtime requirements, accurate
+  install links, and separated archived-vs-actual-package evidence) was a
+  documentation-only revision and made no functionality claim.
+- Nothing here changes the published v0.1.0, v0.1.1, or v0.2.0 release records;
+  no tags were moved and no assets were replaced.
 
 ## 0.2.0 — 2026-10-10 (published limited prerelease)
 
