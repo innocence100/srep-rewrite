@@ -20,8 +20,11 @@ unchanged and retains its fixed 256 MiB managed-memory / 4 GiB temp defaults.
 - Detection is best-effort, not a host/container/RSS cap. Missing visible Linux
   cgroup levels produce a conservative fallback warning; Windows Job Objects,
   macOS container limits, and RLIMIT_AS are unsupported.
-- Source acceptance, full fidelity evidence, and native Windows/macOS verification
-  are integration/release gates still pending. See
+- Source review R2/R3/R4 and the exact-commit native/CI verification completed on
+  `5d78773f25d2b1c9cb80d5be13bbd1bea1e449a0`; see
+  [`docs/evidence/v0.3.0-native.md`](docs/evidence/v0.3.0-native.md). This remains
+  an unreleased development version: no v0.3.0 tag or GitHub release exists.
+  Final evidence review R4 passed; this does not authorize publication. See
   [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
   [`docs/plans/v0.3.0-resource-defaults.md`](docs/plans/v0.3.0-resource-defaults.md).
 
