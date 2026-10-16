@@ -16,7 +16,9 @@
 //! memory run cannot overlap the others and spike peak RSS. No test fabricates
 //! a fixed 256 MiB/4 GiB budget that the binary did not actually apply.
 
-use std::fs::{self, File, OpenOptions};
+#[cfg(unix)]
+use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
