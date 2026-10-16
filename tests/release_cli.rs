@@ -82,7 +82,7 @@ fn version_long_and_short_flags_match_cargo_pkg_version_without_io() {
         bodies.push(stdout);
     }
     assert_eq!(bodies[0], bodies[1]);
-    assert_eq!(env!("CARGO_PKG_VERSION"), "0.2.1");
+    assert_eq!(env!("CARGO_PKG_VERSION"), "0.3.0");
     fs::remove_dir_all(dir).unwrap();
 }
 
@@ -128,6 +128,8 @@ fn help_lists_seed_size_target_chunk_and_software_vs_format_without_io() {
             stdout.contains("--version"),
             "{flag} must mention the version flag"
         );
+        assert!(stdout.contains("srep compress defaults:"));
+        assert!(stdout.contains("Other commands and library ResourceConfig::default() remain 256 MiB memory / 4 GiB temp"));
         assert_no_side_effects(&dir, &before);
         bodies.push(stdout);
     }

@@ -1033,21 +1033,56 @@ def old_argv(binary: Path, method: str, source: Path, archive: Path) -> list[str
 #: not take resource flags; the evaluator must never pass them there.
 RESOURCE_STAGES = ("compress", "decompress")
 
+#: Harness-chosen fixed comparison budgets.
+#:
+#: From 0.3.0 on, `srep compress` derives `--memory` (half of physical RAM
+#: bounded by visible cgroup limits) and `--temp-limit` (32 GiB or 10x the
+#: regular input size) automatically when the flags are absent.  A run that
+#: omits them is therefore no longer byte-comparable to the frozen 0.2.x
+#: baseline, so the evaluator always pins the historical fixed budgets
+#: explicitly.  These are harness values, NOT user-configured flags; they are
+#: recorded under `resource.resolved`/`resource.source`, never as `configured`.
+HARNESS_FIXED_MEMORY = "256MiB"
+HARNESS_FIXED_TEMP_LIMIT = "4GiB"
+
+
+def resolved_resource(resource: dict[str, str | None]) -> dict[str, str | None]:
+    """Return the budgets that are actually placed on each command line.
+
+    A caller-provided value always wins.  Otherwise the harness inserts its own
+    fixed comparison budget.  `temp_dir` has no harness default: it is emitted
+    only when configured.  This is deliberately distinct from `configured`,
+    which records only flags the caller supplied.
+    """
+    memory = resource.get("memory")
+    temp_limit = resource.get("temp_limit")
+    return {
+        "memory": memory if memory is not None else HARNESS_FIXED_MEMORY,
+        "temp_dir": resource.get("temp_dir"),
+        "temp_limit": (
+            temp_limit if temp_limit is not None else HARNESS_FIXED_TEMP_LIMIT
+        ),
+    }
+
 
 def resource_argv(resource: dict[str, str | None]) -> list[str]:
     """Translate validated evaluate resource options into CLI flags.
 
     Only resource flags are emitted here; method/layout/checksum selection is
-    owned by the caller.  Absent options emit nothing, preserving the old
-    default behavior byte-for-byte.
+    owned by the caller.  The resolved budgets (caller value or harness-fixed
+    default) are always emitted so a 0.3.0 binary never auto-derives budgets
+    that would break comparability with the frozen baseline; `temp_dir` is
+    emitted only when configured.  Order is stable: memory, temp-dir,
+    temp-limit.
     """
+    resolved = resolved_resource(resource)
     values: list[str] = []
-    if resource.get("memory") is not None:
-        values.extend(["--memory", str(resource["memory"])])
-    if resource.get("temp_dir") is not None:
-        values.extend(["--temp-dir", str(resource["temp_dir"])])
-    if resource.get("temp_limit") is not None:
-        values.extend(["--temp-limit", str(resource["temp_limit"])])
+    if resolved["memory"] is not None:
+        values.extend(["--memory", str(resolved["memory"])])
+    if resolved["temp_dir"] is not None:
+        values.extend(["--temp-dir", str(resolved["temp_dir"])])
+    if resolved["temp_limit"] is not None:
+        values.extend(["--temp-limit", str(resolved["temp_limit"])])
     return values
 
 
@@ -1573,25 +1608,45 @@ def _binary_identity_block(
     }
 
 
-#: Binary built-in defaults (src/config.rs), recorded for the
-#: configured-vs-default distinction.  These are descriptive, not enforced
-#: here; the srep CLI validates any configured override.
-DEFAULT_MEMORY_BYTES = 256 * 1024 * 1024
-DEFAULT_TEMP_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
+#: Library/binary built-in defaults (src/config.rs `ResourceConfig::default()`).
+#: Recorded descriptively for the configured-vs-default distinction only; from
+#: 0.3.0 the harness pins explicit budgets and never relies on these implicit
+#: values, so they must not be reported as the budgets a run actually used.
+LIBRARY_DEFAULT_MEMORY_BYTES = 256 * 1024 * 1024
+LIBRARY_DEFAULT_TEMP_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
 
 
 def _resource_report(resource: dict[str, str | None]) -> dict[str, object]:
+    configured = {
+        name: resource.get(name) is not None
+        for name in ("memory", "temp_dir", "temp_limit")
+    }
+    source = {
+        "memory": "user" if configured["memory"] else "harness_fixed_default",
+        "temp_dir": "user" if configured["temp_dir"] else "unset",
+        "temp_limit": "user" if configured["temp_limit"] else "harness_fixed_default",
+    }
     return {
+        # Caller-supplied flags only: null when the harness inserted a budget.
         "memory": resource.get("memory"),
         "temp_dir": resource.get("temp_dir"),
         "temp_limit": resource.get("temp_limit"),
-        "configured": {
-            name: resource.get(name) is not None
-            for name in ("memory", "temp_dir", "temp_limit")
+        # Whether the caller explicitly configured each resource flag.
+        "configured": configured,
+        # The values actually placed on every compress/decompress command line.
+        "resolved": resolved_resource(resource),
+        # Provenance of each resolved value (user flag vs harness-fixed budget).
+        "source": source,
+        # Harness-chosen fallback budgets, for operators reading the report.
+        "harness_fixed": {
+            "memory": HARNESS_FIXED_MEMORY,
+            "temp_limit": HARNESS_FIXED_TEMP_LIMIT,
         },
-        "defaults": {
-            "memory_bytes": DEFAULT_MEMORY_BYTES,
-            "temp_limit_bytes": DEFAULT_TEMP_LIMIT_BYTES,
+        # Descriptive library defaults; explicitly NOT this run's budgets.
+        "library_defaults": {
+            "memory_bytes": LIBRARY_DEFAULT_MEMORY_BYTES,
+            "temp_limit_bytes": LIBRARY_DEFAULT_TEMP_LIMIT_BYTES,
+            "note": "library ResourceConfig::default(); not the budgets sent by this run",
         },
     }
 
@@ -1985,13 +2040,18 @@ def main() -> int:
         help="positive seconds per evaluation command, or 'none' for no timeout (default: 180)",
     )
     # Resource-only passthrough for compress/decompress (the binary validates
-    # the values and its errors propagate as ordinary nonzero commands).  Left
-    # unset, no resource flag is emitted and the binary keeps its defaults.
+    # the values and its errors propagate as ordinary nonzero commands).  When
+    # a caller does not configure a budget, the harness pins its fixed
+    # comparison budget (`256MiB` memory, `4GiB` temp limit) so a 0.3.0 binary
+    # never auto-derives budgets and breaks comparability with the baseline.
     evaluate_parser.add_argument(
         "--memory",
         default=None,
         metavar="SIZE",
-        help="optional srep --memory SIZE passed to compress/decompress (default: binary default)",
+        help=(
+            "optional srep --memory SIZE passed to compress/decompress "
+            f"(default: harness-fixed {HARNESS_FIXED_MEMORY})"
+        ),
     )
     evaluate_parser.add_argument(
         "--temp-dir",
@@ -2003,7 +2063,10 @@ def main() -> int:
         "--temp-limit",
         default=None,
         metavar="SIZE",
-        help="optional srep --temp-limit SIZE passed to compress/decompress (default: 4GiB)",
+        help=(
+            "optional srep --temp-limit SIZE passed to compress/decompress "
+            f"(default: harness-fixed {HARNESS_FIXED_TEMP_LIMIT})"
+        ),
     )
     subparsers.add_parser("self-test")
     args = parser.parse_args()

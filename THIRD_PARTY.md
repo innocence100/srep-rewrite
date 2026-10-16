@@ -40,6 +40,9 @@ for reproducibility. The project uses these dependency crates:
 - `unicode-normalization` 0.1.25 — NFC normalization for requirement leaves.
   License: MIT OR Apache-2.0. Upstream:
   <https://github.com/unicode-rs/unicode-normalization>.
+- `system-memory` 0.2.1 — safe cross-platform total physical-memory snapshots
+  for Windows and total physical-memory queries for macOS. License: MIT.
+  Upstream: <https://github.com/vcfxb/system-memory>.
 
 The lockfile currently resolves the direct dependency versions above exactly;
 Cargo's lockfile is authoritative for all transitive versions and checksums.
@@ -75,6 +78,9 @@ Cargo's lockfile is authoritative for all transitive versions and checksums.
 - `linux-raw-sys` 0.12.1 — transitive of `rustix`, Linux ABI bindings. License:
   Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT. Upstream:
   <https://github.com/sunfishcode/linux-raw-sys>.
+- `mach2` 0.6.0 — transitive of `system-memory`, safe Rust bindings to macOS
+  Mach APIs. License: BSD-2-Clause OR MIT OR Apache-2.0. Upstream:
+  <https://github.com/JohnTitor/mach2>.
 - `once_cell` 1.21.4 — transitive of `tempfile`, one-time initialization.
   License: MIT OR Apache-2.0. Upstream: <https://github.com/matklad/once_cell>.
 - `r-efi` 6.0.0 — optional `getrandom` UEFI backend (`cfg(all(target_os =
@@ -88,6 +94,9 @@ Cargo's lockfile is authoritative for all transitive versions and checksums.
 - `rustix` 1.1.4 — transitive of `tempfile`, safe system APIs. License:
   Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT. Upstream:
   <https://github.com/bytecodealliance/rustix>.
+- `rustc_version` 0.4.1 — build dependency of `system-memory`, compiler-version
+  detection. License: MIT OR Apache-2.0. Upstream:
+  <https://github.com/djc/rustc-version-rs>.
 - `shlex` 2.0.1 — transitive of `cc`, shell-like argument parsing. License: MIT
   OR Apache-2.0. Upstream: <https://github.com/comex/rust-shlex>.
 - `windows-link` 0.2.1 — transitive of Windows system crates. License: MIT OR
@@ -123,6 +132,8 @@ Cargo's lockfile is authoritative for all transitive versions and checksums.
   MIT OR Apache-2.0. Upstream: <https://github.com/dtolnay/quote>.
 - `serde_core` 1.0.229 — transitive Serde traits. License: MIT OR Apache-2.0.
   Upstream: <https://github.com/serde-rs/serde>.
+- `semver` 1.0.27 — transitive of `rustc_version`, semantic version parsing.
+  License: MIT OR Apache-2.0. Upstream: <https://github.com/dtolnay/semver>.
 - `serde_derive` 1.0.229 — transitive Serde derive macros. License: MIT OR
   Apache-2.0. Upstream: <https://github.com/serde-rs/serde>.
 - `syn` 3.0.4 — transitive procedural macro parsing. License: MIT OR

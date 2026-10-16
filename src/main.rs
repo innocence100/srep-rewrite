@@ -15,6 +15,8 @@ use srep::{
     inspect_with_resources, parse_size, verify_with_resources,
 };
 
+mod platform;
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("srep: {error}");
@@ -69,9 +71,6 @@ fn run_compress(args: Vec<OsString>) -> Result<()> {
     if options.force && output == OsStr::new("-") {
         return Err(Error::invalid_config("--force is invalid for stdout"));
     }
-    if input == OsStr::new("-") && output == OsStr::new("-") {
-        return compress_stream(options, io::stdin().lock(), io::stdout().lock());
-    }
     if input != OsStr::new("-") && output != OsStr::new("-") {
         reject_input_collision(input_path, Path::new(&output))?;
         if !options.force && path_exists(Path::new(&output))? {
@@ -80,28 +79,54 @@ fn run_compress(args: Vec<OsString>) -> Result<()> {
             ));
         }
     }
-    let config = options.config.clone();
-    if input == OsStr::new("-") {
-        write_archive(
-            Path::new(&output),
-            options.force,
-            io::stdin().lock(),
-            &config,
-        )
-    } else if output == OsStr::new("-") {
-        compress_stream(
-            options,
-            BufReader::new(open_input(input_path)?),
-            io::stdout().lock(),
-        )
+    let (reader, facts) = if input == OsStr::new("-") {
+        (InputReader::Stdin, platform::InputFacts::stdin())
     } else {
-        write_archive(
-            Path::new(&output),
-            options.force,
-            BufReader::new(open_input(input_path)?),
-            &config,
-        )
-    }
+        let file = open_input(input_path)?;
+        let facts = if options.explicit_temp_limit.is_some() {
+            platform::InputFacts {
+                kind: platform::InputKind::NonRegular,
+                logical_len: None,
+            }
+        } else {
+            let metadata = file.metadata().map_err(Error::input_io)?;
+            platform::InputFacts::from_metadata(&metadata)
+        };
+        (InputReader::File(BufReader::new(file)), facts)
+    };
+    let quiet = options.quiet;
+    let force = options.force;
+    let output_for_transaction = output.clone();
+    run_compress_orchestration(
+        &options.config,
+        options.explicit_memory,
+        options.explicit_temp_limit,
+        facts,
+        &platform::HostOsProbe,
+        quiet,
+        move |config| match reader {
+            InputReader::Stdin if output_for_transaction == OsStr::new("-") => {
+                compress_stream_with(config, quiet, io::stdin().lock(), io::stdout().lock())
+            }
+            InputReader::Stdin => write_archive(
+                Path::new(&output_for_transaction),
+                force,
+                io::stdin().lock(),
+                config,
+            ),
+            InputReader::File(reader) if output_for_transaction == OsStr::new("-") => {
+                compress_stream_with(config, quiet, reader, io::stdout().lock())
+            }
+            InputReader::File(reader) => {
+                write_archive(Path::new(&output_for_transaction), force, reader, config)
+            }
+        },
+    )
+}
+
+enum InputReader {
+    Stdin,
+    File(BufReader<File>),
 }
 
 fn run_decompress(args: Vec<OsString>) -> Result<()> {
@@ -255,6 +280,8 @@ struct Options {
     config: CompressionConfig,
     force: bool,
     quiet: bool,
+    explicit_memory: Option<u64>,
+    explicit_temp_limit: Option<u64>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -280,6 +307,8 @@ fn parse_options(args: Vec<OsString>, command: CommandKind) -> Result<(Options, 
         config: CompressionConfig::default(),
         force: false,
         quiet: false,
+        explicit_memory: None,
+        explicit_temp_limit: None,
     };
     let mut positional = Vec::new();
     let mut seen = SeenOptions::default();
@@ -350,7 +379,9 @@ fn parse_options(args: Vec<OsString>, command: CommandKind) -> Result<(Options, 
             rep_min_match = Some(parse_size(parse_utf8(&value, "--rep-min-match")?)?);
         } else if let Some(value) = option_value(arg, &args, &mut index, "--memory")? {
             note_once(&mut seen.memory, "--memory")?;
-            options.config.resources.memory = parse_size(parse_utf8(&value, "--memory")?)?;
+            let parsed = parse_size(parse_utf8(&value, "--memory")?)?;
+            options.explicit_memory = Some(parsed);
+            options.config.resources.memory = parsed;
         } else if let Some(value) = option_value(arg, &args, &mut index, "--temp-dir")? {
             note_once(&mut seen.temp_dir, "--temp-dir")?;
             if value.is_empty() {
@@ -359,7 +390,9 @@ fn parse_options(args: Vec<OsString>, command: CommandKind) -> Result<(Options, 
             options.config.resources.temp_dir = PathBuf::from(value);
         } else if let Some(value) = option_value(arg, &args, &mut index, "--temp-limit")? {
             note_once(&mut seen.temp_limit, "--temp-limit")?;
-            options.config.resources.temp_limit = parse_size(parse_utf8(&value, "--temp-limit")?)?;
+            let parsed = parse_size(parse_utf8(&value, "--temp-limit")?)?;
+            options.explicit_temp_limit = Some(parsed);
+            options.config.resources.temp_limit = parsed;
         } else if let Some(value) = option_value(arg, &args, &mut index, "--output-limit")? {
             note_once(&mut seen.output_limit, "--output-limit")?;
             options.config.resources.output_limit =
@@ -572,13 +605,82 @@ fn open_input(path: &Path) -> Result<File> {
     File::open(path).map_err(Error::input_io)
 }
 
-fn compress_stream<R: Read, W: Write>(options: Options, input: R, output: W) -> Result<()> {
-    let context = ResourceContext::with_resources(&options.config.resources)?;
-    let stats = compress_with_context(input, output, &options.config, &context)?;
-    if !options.quiet {
+fn compress_stream_with<R: Read, W: Write>(
+    config: &CompressionConfig,
+    quiet: bool,
+    input: R,
+    output: W,
+) -> Result<()> {
+    let context = ResourceContext::with_resources(&config.resources)?;
+    let stats = compress_with_context(input, output, config, &context)?;
+    if !quiet {
         eprintln!("compressed {} bytes", stats.original_size);
     }
     Ok(())
+}
+
+fn run_compress_orchestration<F>(
+    base_config: &CompressionConfig,
+    explicit_memory: Option<u64>,
+    explicit_temp_limit: Option<u64>,
+    input: platform::InputFacts,
+    probe: &dyn platform::HostProbe,
+    quiet: bool,
+    transaction: F,
+) -> Result<()>
+where
+    F: FnOnce(&CompressionConfig) -> Result<()>,
+{
+    run_compress_orchestration_with_diagnostics(
+        (
+            base_config,
+            explicit_memory,
+            explicit_temp_limit,
+            input,
+            probe,
+            quiet,
+        ),
+        |line| eprintln!("{line}"),
+        transaction,
+    )
+}
+
+fn run_compress_orchestration_with_diagnostics<F, D>(
+    args: (
+        &CompressionConfig,
+        Option<u64>,
+        Option<u64>,
+        platform::InputFacts,
+        &dyn platform::HostProbe,
+        bool,
+    ),
+    mut diagnostic: D,
+    transaction: F,
+) -> Result<()>
+where
+    F: FnOnce(&CompressionConfig) -> Result<()>,
+    D: FnMut(String),
+{
+    let (base_config, explicit_memory, explicit_temp_limit, input, probe, quiet) = args;
+    let resolved =
+        platform::resolve_compress_with(probe, explicit_memory, explicit_temp_limit, input)?;
+    let mut config = base_config.clone();
+    config.resources.memory = resolved.memory.bytes;
+    config.resources.temp_limit = resolved.temp_limit.bytes;
+    config.validate()?;
+    for warning in &resolved.warnings {
+        diagnostic(format!("srep: warning: {warning}"));
+    }
+    if !quiet {
+        diagnostic(format!(
+            "srep: resources: memory={} ({}) temp_limit={} ({})",
+            resolved.memory.bytes,
+            resolved.memory.origin,
+            resolved.temp_limit.bytes,
+            resolved.temp_limit.origin,
+        ));
+    }
+    transaction(&config)
 }
 
 fn write_archive<R: Read>(
@@ -799,7 +901,8 @@ fn usage() -> &'static str {
      compress options: --method m0|m1|m2|m3|m4|m5 (-m0..-m5) --layout index|future|io --checksum xxh3|blake3 --block-size SIZE --min-match SIZE --seed-size SIZE --target-chunk SIZE --max-distance SIZE --rep-overlay --rep-distance SIZE --rep-min-match SIZE --force --quiet\n\
      --seed-size is valid for m3/m4 (default equals --min-match); --target-chunk is valid for m1/m2 (default 4096).\n\
  other options: --force --quiet --memory SIZE --temp-dir PATH --temp-limit SIZE --output-limit SIZE\n\
- --memory SIZE limits managed compression working memory: input/output buffers, candidate storage, indexes, sorting, WIS/match selection, caches, and their working control state. File pathname processing, runtime and allocator overhead are excluded; it is NOT a hard cap on total process RSS. Additional resident memory beyond --memory can come from those excluded categories.\n\
+     srep compress defaults: --memory is half of physical RAM bounded by visible hard limits (conservative 256 MiB fallback when unavailable/indeterminate); --temp-limit is 32 GiB for stdin/non-regular inputs or max(32 GiB, 10x regular input length). Overflow requires explicit --temp-limit. Other commands and library ResourceConfig::default() remain 256 MiB memory / 4 GiB temp.\n\
+     --memory SIZE limits managed compression working memory: input/output buffers, candidate storage, indexes, sorting, WIS/match selection, caches, and their working control state. File pathname processing, runtime and allocator overhead are excluded; it is NOT a hard cap on total process RSS. Additional resident memory beyond --memory can come from those excluded categories.\n\
  SIZE units: B, KiB/K, MiB/M, GiB/G (binary powers of 1024); '-' means stdin/stdout\n\
  default output suffix is .srep"
 }
@@ -808,10 +911,35 @@ fn usage() -> &'static str {
 mod tests {
     use super::existing_regular_entries_are_same;
     use super::finish_temporary_transaction;
+    use super::{
+        platform, run_compress_orchestration, run_compress_orchestration_with_diagnostics,
+    };
     use srep::Error;
     use srep::ResourceConfig;
     use std::fs;
     use std::path::PathBuf;
+
+    struct TestProbe {
+        physical: platform::MemoryProbe,
+        hard: platform::HardProbe,
+    }
+    impl platform::HostProbe for TestProbe {
+        fn physical(&self) -> platform::MemoryProbe {
+            self.physical
+        }
+        fn hard(&self) -> platform::HardProbe {
+            self.hard
+        }
+    }
+    struct PanicProbe;
+    impl platform::HostProbe for PanicProbe {
+        fn physical(&self) -> platform::MemoryProbe {
+            panic!("explicit memory must not probe")
+        }
+        fn hard(&self) -> platform::HardProbe {
+            panic!("explicit memory must not probe")
+        }
+    }
 
     fn temp_dir() -> PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -883,6 +1011,211 @@ mod tests {
             help.contains("File pathname processing, runtime and allocator overhead are excluded")
         );
         assert!(help.contains("it is NOT a hard cap on total process RSS"));
+        assert!(help.contains("srep compress defaults: --memory is half of physical RAM"));
+        assert!(help.contains("Other commands and library ResourceConfig::default() remain 256 MiB memory / 4 GiB temp"));
+    }
+
+    #[test]
+    fn orchestration_resolve_failures_do_not_enter_transaction() {
+        let base = srep::CompressionConfig::default();
+        let probe = TestProbe {
+            physical: platform::MemoryProbe::Known(1),
+            hard: platform::HardProbe {
+                identified: true,
+                known_min: Some(0),
+                indeterminate: false,
+            },
+        };
+        let mut entered = 0;
+        let zero_result = run_compress_orchestration(
+            &base,
+            None,
+            None,
+            platform::InputFacts::stdin(),
+            &probe,
+            true,
+            |_| {
+                entered += 1;
+                Ok(())
+            },
+        );
+        assert_eq!(
+            zero_result.unwrap_err().kind(),
+            srep::ErrorKind::InvalidConfiguration
+        );
+        assert_eq!(entered, 0);
+
+        let overflow = run_compress_orchestration(
+            &base,
+            None,
+            None,
+            platform::InputFacts {
+                kind: platform::InputKind::Regular,
+                logical_len: Some(u64::MAX),
+            },
+            &probe,
+            true,
+            |_| {
+                entered += 1;
+                Ok(())
+            },
+        );
+        assert!(overflow.unwrap_err().to_string().contains("--temp-limit"));
+        assert_eq!(entered, 0);
+    }
+
+    #[test]
+    fn orchestration_explicit_overrides_bypass_detection_and_temp_overflow() {
+        let base = srep::CompressionConfig::default();
+        let mut entered = 0;
+        run_compress_orchestration(
+            &base,
+            Some(1024 * 1024),
+            Some(64 * 1024 * 1024),
+            platform::InputFacts {
+                kind: platform::InputKind::Regular,
+                logical_len: Some(u64::MAX),
+            },
+            &PanicProbe,
+            true,
+            |config| {
+                entered += 1;
+                assert_eq!(config.resources.memory, 1024 * 1024);
+                assert_eq!(config.resources.temp_limit, 64 * 1024 * 1024);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(entered, 1);
+    }
+
+    #[test]
+    fn orchestration_derives_regular_file_temp_growth_before_transaction() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        let base = srep::CompressionConfig::default();
+        let probe = PanicProbe;
+        let mut entered = 0;
+        run_compress_orchestration(
+            &base,
+            Some(64 * 1024 * 1024),
+            None,
+            platform::InputFacts {
+                kind: platform::InputKind::Regular,
+                logical_len: Some(8 * GIB),
+            },
+            &probe,
+            true,
+            |config| {
+                entered += 1;
+                assert_eq!(config.resources.memory, 64 * 1024 * 1024);
+                assert_eq!(config.resources.temp_limit, 80 * GIB);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(entered, 1);
+    }
+
+    #[test]
+    fn orchestration_diagnostics_keep_independent_origins_and_quiet_fallback_warning() {
+        let base = srep::CompressionConfig::default();
+        let probe = TestProbe {
+            physical: platform::MemoryProbe::Unavailable,
+            hard: platform::HardProbe::absent(),
+        };
+        let mut lines = Vec::new();
+        run_compress_orchestration_with_diagnostics(
+            (
+                &base,
+                Some(128),
+                None,
+                platform::InputFacts::stdin(),
+                &probe,
+                false,
+            ),
+            |line| lines.push(line),
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0],
+            "srep: resources: memory=128 (explicit) temp_limit=34359738368 (auto)"
+        );
+
+        let mut quiet_lines = Vec::new();
+        run_compress_orchestration_with_diagnostics(
+            (
+                &base,
+                None,
+                Some(64),
+                platform::InputFacts::stdin(),
+                &probe,
+                true,
+            ),
+            |line| quiet_lines.push(line),
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(quiet_lines.len(), 1);
+        assert_eq!(
+            quiet_lines[0],
+            "srep: warning: automatic memory detection failed (physical memory unavailable); using conservative fallback memory budget 268435456 B for this operation"
+        );
+    }
+
+    #[test]
+    fn orchestration_transaction_failure_keeps_existing_file_and_cleans_stage() {
+        let dir = temp_dir();
+        let destination = dir.join("archive.srep");
+        fs::write(&destination, b"original bytes").unwrap();
+        let base = srep::CompressionConfig::default();
+        let probe = TestProbe {
+            physical: platform::MemoryProbe::Known(1024 * 1024 * 1024),
+            hard: platform::HardProbe::absent(),
+        };
+        let result = run_compress_orchestration(
+            &base,
+            Some(16 * 1024 * 1024),
+            Some(64 * 1024 * 1024),
+            platform::InputFacts::stdin(),
+            &probe,
+            true,
+            |_| {
+                let (temp_path, temp) = super::temporary_output(&destination)?;
+                let context = srep::ResourceContext::with_resources(&base.resources)?;
+                let writer = srep::resource::BudgetedWriter::new(temp, &context.temp)?;
+                finish_temporary_transaction(&destination, temp_path.clone(), writer, true, |w| {
+                    use std::io::Write;
+                    w.write_all(b"partial output").map_err(Error::output_io)?;
+                    Err(Error::input_io(std::io::Error::other(
+                        "injected compression error",
+                    )))
+                })
+            },
+        );
+        assert_eq!(result.unwrap_err().kind(), srep::ErrorKind::InputIo);
+        assert_eq!(fs::read(&destination).unwrap(), b"original bytes");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn parsed_resource_options_keep_explicit_origins() {
+        let (options, positional) = super::parse_options(
+            [
+                "--memory=2MiB".into(),
+                "--temp-limit".into(),
+                "5GiB".into(),
+                "input".into(),
+            ]
+            .to_vec(),
+            super::CommandKind::Compress,
+        )
+        .unwrap();
+        assert_eq!(options.explicit_memory, Some(2 * 1024 * 1024));
+        assert_eq!(options.explicit_temp_limit, Some(5 * 1024 * 1024 * 1024));
+        assert_eq!(positional, ["input"]);
     }
 
     #[test]

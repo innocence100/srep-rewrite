@@ -18,16 +18,20 @@ find-msvc-tools|0.1.11|MIT OR Apache-2.0|https://github.com/rust-lang/cc-rs
 getrandom|0.4.3|MIT OR Apache-2.0|https://github.com/rust-random/getrandom
 libc|0.2.189|MIT OR Apache-2.0|https://github.com/rust-lang/libc
 linux-raw-sys|0.12.1|Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT|https://github.com/sunfishcode/linux-raw-sys
+mach2|0.6.0|BSD-2-Clause OR MIT OR Apache-2.0|https://github.com/JohnTitor/mach2
 inout|0.1.4|MIT OR Apache-2.0|https://github.com/RustCrypto/utils
 md-5|0.10.6|MIT OR Apache-2.0|https://github.com/RustCrypto/hashes
 once_cell|1.21.4|MIT OR Apache-2.0|https://github.com/matklad/once_cell
 r-efi|6.0.0|MIT OR Apache-2.0 OR LGPL-2.1-or-later|https://github.com/r-efi/r-efi
 rustix|1.1.4|Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT|https://github.com/bytecodealliance/rustix
+rustc_version|0.4.1|MIT OR Apache-2.0|https://github.com/djc/rustc-version-rs
 same-file|1.0.6|Unlicense/MIT|https://github.com/BurntSushi/same-file
+semver|1.0.27|MIT OR Apache-2.0|https://github.com/dtolnay/semver
 sha1|0.10.7|MIT OR Apache-2.0|https://github.com/RustCrypto/hashes
 sha2|0.10.9|MIT OR Apache-2.0|https://github.com/RustCrypto/hashes
 shlex|2.0.1|MIT OR Apache-2.0|https://github.com/comex/rust-shlex
 siphasher|1.0.3|MIT/Apache-2.0|https://github.com/jedisct1/rust-siphash
+system-memory|0.2.1|MIT|https://github.com/vcfxb/system-memory
 tempfile|3.27.0|MIT OR Apache-2.0|https://github.com/Stebalien/tempfile
 twox-hash|2.1.4|MIT|https://github.com/shepmaster/twox-hash
 typenum|1.20.1|MIT OR Apache-2.0|https://github.com/paholg/typenum

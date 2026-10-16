@@ -9,13 +9,20 @@ reader, or compatibility contract. The frozen capability-fidelity design is
 also historical provenance. NGv3 inherits only the matching and resource
 semantics explicitly carried into `FORMAT-V3.md`.
 
-The current software contract is:
+The current source contract is:
 
 - NGv3 is read/write and self-contained;
 - historical SuperREP v1–v4 archives are embedded read-only inputs;
 - NGv1 and NGv2 are rejected as `UnsupportedVersion`;
 - split indexes are unsupported; and
 - the release default is method m3, with an 8 MiB default block size.
+
+The v0.3.0 development source auto-resolves `srep compress` memory and temp
+budgets when not explicitly supplied. Non-compress commands and the library
+resource default remain 256 MiB / 4 GiB; published 0.2.1 artifacts retain those
+fixed defaults. Do not describe this unreleased source policy as behavior of the
+published 0.2.1 binaries. The detector is best-effort, not a global memory/RSS
+cap; see `docs/releases/v0.3.0.md` for known limits.
 
 Do not describe historical NGv2 behavior as current behavior. Keep the
 limited-preview compatibility policy honest: no unsupported compatibility,
@@ -52,6 +59,12 @@ local candidate evidence and the final actual-package results are separate
 records; do not merge them. The historical 0.1.0 default-m3 round trip is
 recorded in the release notes as a correctness check; do not turn those raw
 timings into a performance claim.
+
+The fidelity evaluator intentionally uses explicit fixed budgets so its
+measurements remain comparable to the historical frozen baseline. The large-file
+roundtrip harness, by contrast, omits resource flags unless requested and binds
+the actual `srep: resources:` diagnostic; never report fixed defaults for an
+unconfigured 0.3.0 binary.
 
 ## Archive safety
 

@@ -4,12 +4,26 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-Planned 0.3.0 work: an automatic resource policy / resource defaults. This is a
-**plan only**. No 0.3.0 feature, resource-policy behavior, default change, version
-tag, or package is implemented or released here, and nothing in 0.2.1 changes the
-existing 256 MiB managed-memory or 4 GiB temp-limit defaults. The current
-release boundary is described in
-[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md).
+### 0.3.0 — in development (unreleased)
+
+The source tree is versioned 0.3.0 for development. This is **not a published
+release**; do not infer a tag, package, native platform verification, or release
+acceptance from the source version. The already-published 0.2.1 package remains
+unchanged and retains its fixed 256 MiB managed-memory / 4 GiB temp defaults.
+
+- `srep compress` now resolves automatic per-run resource budgets when resource
+  flags are omitted: physical-memory/cgroup-aware memory policy and a temp budget
+  based on input kind/length. Explicit flags remain independent overrides.
+- Non-compress CLI operations and library `ResourceConfig::default()` retain the
+  fixed 256 MiB / 4 GiB defaults. No archive format, matching algorithm, or
+  resource-ledger policy change is included.
+- Detection is best-effort, not a host/container/RSS cap. Missing visible Linux
+  cgroup levels produce a conservative fallback warning; Windows Job Objects,
+  macOS container limits, and RLIMIT_AS are unsupported.
+- Source acceptance, full fidelity evidence, and native Windows/macOS verification
+  are integration/release gates still pending. See
+  [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
+  [`docs/plans/v0.3.0-resource-defaults.md`](docs/plans/v0.3.0-resource-defaults.md).
 
 ## 0.2.1 — 2026-10-15 (published limited prerelease)
 

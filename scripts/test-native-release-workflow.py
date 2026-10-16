@@ -11,12 +11,12 @@ spec.loader.exec_module(ci)
 workflow = ci.load_workflow(ROOT / ".github/workflows/native-release.yml")
 # Ruby's YAML 1.1 parser represents the key `on` as true.
 events = workflow.get("on", workflow.get("true"))
-assert events["push"]["branches"] == ["ci/native-release/v0.2.1"]
+assert events["push"]["branches"] == ["ci/native-release/v0.3.0"]
 inputs = events["workflow_dispatch"]["inputs"]
 for key in ("ref", "source_sha"):
     assert inputs[key]["required"] is True and "default" not in inputs[key]
 version = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]["version"]
-assert str(inputs["version"]["default"]) == version == "0.2.1"
+assert str(inputs["version"]["default"]) == version == "0.3.0"
 assert workflow["permissions"] == {"contents": "read"}
 job = workflow["jobs"]["native-package"]
 matrix = job["strategy"]["matrix"]["include"]

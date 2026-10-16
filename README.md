@@ -114,13 +114,14 @@ SHA-256 is
 
 ## Build from source
 
-Software version **0.2.1** is published; its native binaries and the 72-row
+The published software release is **0.2.1**; its native binaries and the 72-row
 final-XZ fidelity run on the published Linux package binary are recorded in
 [`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md) and
 [`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
-The accepted sparse-input m3 optimization is included in this source. The
-planned 0.3.0 automatic resource policy is not implemented and changes none of
-the current defaults.
+This development source is versioned **0.3.0-unreleased** and contains automatic
+resource policy for `srep compress`; it does not change the already-published
+0.2.1 packages. The implementation and local evidence are documented in
+[`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md). No v0.3.0 release is claimed.
 
 Rust **1.88.0** is the declared minimum supported Rust version. A locked
 source build on Linux is:
@@ -181,6 +182,22 @@ files, and use the resource options shown by `./srep --help` (`--memory`,
 `--temp-dir`, and `--temp-limit`) when operating under a budget. A resource
 limit must fail explicitly; it must not silently weaken matching or change the
 format.
+
+For the **0.3.0 development source**, `srep compress` automatically chooses
+memory and temporary budgets when those flags are omitted. The memory policy
+starts from half of total physical RAM (not currently available memory), bounded
+by identified visible hard limits; uncertain/unavailable detection uses a
+conservative fallback with a stderr warning. It is best-effort and is not a
+container/job/RSS cap. Linux cgroup visibility may be incomplete; Windows Job
+Objects, macOS container limits, and RLIMIT_AS are not detected. The temporary
+limit is `max(32 GiB, input length × 10)` for a regular file, and 32 GiB for stdin
+or a non-regular input; multiplication overflow requires explicit
+`--temp-limit`. Explicit `--memory` and `--temp-limit` override only their own
+resource policy. Non-compress CLI commands and library
+`ResourceConfig::default()` remain fixed at 256 MiB memory / 4 GiB temp. The
+published 0.2.1 binaries retain their historical fixed defaults. See
+[`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) for development status and
+limitations.
 
 For every archive, check the result before deleting or replacing the source:
 

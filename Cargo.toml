@@ -1,6 +1,6 @@
 [package]
 name = "srep"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 description = "SREP-NG v3 preprocessor with deterministic multi-method matching"
 license = "MIT"
@@ -35,3 +35,6 @@ siphasher = { version = "1.0.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false, features = ["getrandom"] }
 twox-hash = { version = "=2.1.4", default-features = false, features = ["std", "xxhash3_128"] }
 unicode-normalization = "0.1.25"
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+system-memory = "=0.2.1"

@@ -598,7 +598,10 @@ def _argv_for(entries: list[list[str]], command: str) -> list[str]:
     raise AssertionError(f"no logged {command} argv in {entries}")
 
 
-def test_default_has_no_resource_argv(directory: Path) -> None:
+def test_default_emits_harness_fixed_resource_argv(directory: Path) -> None:
+    # A caller that configures no resources must still get the harness-pinned
+    # fixed budgets on compress/decompress so a 0.3.0 binary never auto-derives
+    # budgets that would break comparability with the frozen 0.2.x baseline.
     corpus = tiny_corpus()
     baseline = tiny_baseline(corpus)
     binary = install_fake_binary(directory)
@@ -612,20 +615,51 @@ def test_default_has_no_resource_argv(directory: Path) -> None:
     assert status == 0
     commands = _logged_argv(argv_log)
     assert commands, "fake binary never logged an invocation"
-    for entry in commands:
+    compress = _argv_for(commands, "compress")
+    decompress = _argv_for(commands, "decompress")
+    for argv in (compress, decompress):
+        assert argv[argv.index("--memory") + 1] == fidelity.HARNESS_FIXED_MEMORY
+        assert argv[argv.index("--temp-limit") + 1] == fidelity.HARNESS_FIXED_TEMP_LIMIT
+        # No harness temp_dir budget is invented.
+        assert "--temp-dir" not in argv
+    # info/test take no resource flags.
+    for argv in (_argv_for(commands, "info"), _argv_for(commands, "test")):
         for flag in ("--memory", "--temp-dir", "--temp-limit"):
-            assert flag not in entry, f"default run emitted {flag}: {entry}"
+            assert flag not in argv, f"{argv[0]} must not receive {flag}: {argv}"
     report = load_report(report_path)
-    assert report["resource"]["memory"] is None
-    assert report["resource"]["temp_dir"] is None
-    assert report["resource"]["temp_limit"] is None
-    assert report["resource"]["configured"] == {
+    resource = report["resource"]
+    # Top-level fields stay caller-only: the harness insertion is not a user
+    # configuration and must not be reported as one.
+    assert resource["memory"] is None
+    assert resource["temp_dir"] is None
+    assert resource["temp_limit"] is None
+    assert resource["configured"] == {
         "memory": False,
         "temp_dir": False,
         "temp_limit": False,
     }
-    assert report["resource"]["defaults"]["memory_bytes"] == 256 * 1024 * 1024
-    assert report["resource"]["defaults"]["temp_limit_bytes"] == 4 * 1024 * 1024 * 1024
+    # The resolved block records what was actually sent.
+    assert resource["resolved"]["memory"] == fidelity.HARNESS_FIXED_MEMORY
+    assert resource["resolved"]["temp_limit"] == fidelity.HARNESS_FIXED_TEMP_LIMIT
+    assert resource["resolved"]["temp_dir"] is None
+    # ... and it is the exact string on the real command lines, not an
+    # override-only report field.
+    for argv in (compress, decompress):
+        assert resource["resolved"]["memory"] == argv[argv.index("--memory") + 1]
+        assert resource["resolved"]["temp_limit"] == argv[argv.index("--temp-limit") + 1]
+    assert resource["source"] == {
+        "memory": "harness_fixed_default",
+        "temp_dir": "unset",
+        "temp_limit": "harness_fixed_default",
+    }
+    assert resource["harness_fixed"] == {
+        "memory": fidelity.HARNESS_FIXED_MEMORY,
+        "temp_limit": fidelity.HARNESS_FIXED_TEMP_LIMIT,
+    }
+    # Library defaults are descriptive only and clearly labelled as such.
+    assert resource["library_defaults"]["memory_bytes"] == 256 * 1024 * 1024
+    assert resource["library_defaults"]["temp_limit_bytes"] == 4 * 1024 * 1024 * 1024
+    assert "not the budgets sent by this run" in resource["library_defaults"]["note"]
 
 
 def test_resource_flags_pass_to_right_stages(directory: Path) -> None:
@@ -671,6 +705,47 @@ def test_resource_flags_pass_to_right_stages(directory: Path) -> None:
         "temp_dir": True,
         "temp_limit": True,
     }
+    # User-provided values win over the harness budgets and are labelled as
+    # user-sourced; the harness budget is not substituted anywhere.
+    assert report["resource"]["resolved"]["memory"] == "512MiB"
+    assert report["resource"]["resolved"]["temp_limit"] == "32GiB"
+    assert report["resource"]["source"] == {
+        "memory": "user",
+        "temp_dir": "user",
+        "temp_limit": "user",
+    }
+
+
+def test_partial_user_config_keeps_harness_source_for_the_other(directory: Path) -> None:
+    # Per-resource independence: configuring only --memory must not mark the
+    # inherited temp budget as user-configured.
+    corpus = tiny_corpus()
+    baseline = tiny_baseline(corpus)
+    binary = install_fake_binary(directory)
+    report_path = directory / "partial-resource.json"
+    argv_log = directory / "partial-resource.log"
+    env = os.environ.copy()
+    env["SREP_ARGV_LOG"] = os.fspath(argv_log)
+    with patched_evaluate({"corpus": corpus, "baseline": baseline}):
+        with unittest.mock.patch.dict(os.environ, env, clear=False):
+            status = fidelity.evaluate(evaluate_args(binary, report_path, memory="512MiB"))
+    assert status == 0
+    compress = _argv_for(_logged_argv(argv_log), "compress")
+    assert compress[compress.index("--memory") + 1] == "512MiB"
+    assert compress[compress.index("--temp-limit") + 1] == fidelity.HARNESS_FIXED_TEMP_LIMIT
+    resource = load_report(report_path)["resource"]
+    assert resource["configured"] == {
+        "memory": True,
+        "temp_dir": False,
+        "temp_limit": False,
+    }
+    assert resource["source"] == {
+        "memory": "user",
+        "temp_dir": "unset",
+        "temp_limit": "harness_fixed_default",
+    }
+    assert resource["resolved"]["memory"] == "512MiB"
+    assert resource["resolved"]["temp_limit"] == fidelity.HARNESS_FIXED_TEMP_LIMIT
 
 
 def test_resource_paths_stay_single_argv_tokens(directory: Path) -> None:
@@ -1590,10 +1665,12 @@ def main() -> int:
         directory = Path(name)
         test_complete_72_row_success(directory)
         print("test_complete_72_row_success: passed")
-        test_default_has_no_resource_argv(directory)
-        print("test_default_has_no_resource_argv: passed")
+        test_default_emits_harness_fixed_resource_argv(directory)
+        print("test_default_emits_harness_fixed_resource_argv: passed")
         test_resource_flags_pass_to_right_stages(directory)
         print("test_resource_flags_pass_to_right_stages: passed")
+        test_partial_user_config_keeps_harness_source_for_the_other(directory)
+        print("test_partial_user_config_keeps_harness_source_for_the_other: passed")
         test_resource_paths_stay_single_argv_tokens(directory)
         print("test_resource_paths_stay_single_argv_tokens: passed")
         test_offload_profile_stderr_is_retained_per_command(directory)
