@@ -28,7 +28,7 @@ The current normative wire specification is [`docs/FORMAT-V3.md`](docs/FORMAT-V3
 they are not current NGv2 contracts. The frozen design remains relevant only
 where NGv3 explicitly inherits matching and resource semantics.
 
-## Install the published 0.2.1 native release artifact
+## Install the existing 0.2.1 native release artifact
 
 Version **0.2.1** is published as a **limited prerelease** on GitHub:
 
@@ -114,14 +114,18 @@ SHA-256 is
 
 ## Build from source
 
-The published software release is **0.2.1**; its native binaries and the 72-row
-final-XZ fidelity run on the published Linux package binary are recorded in
+The existing software release is **0.2.1**, currently a limited prerelease;
+its native binaries and the 72-row final-XZ fidelity run on the published Linux
+package binary are recorded in
 [`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md) and
 [`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
-This development source is versioned **0.3.0-unreleased** and contains automatic
-resource policy for `srep compress`; it does not change the already-published
-0.2.1 packages. The implementation and local evidence are documented in
-[`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md). No v0.3.0 release is claimed.
+This source is a **0.3.0 release candidate pending publication**. It contains
+automatic resource policy for `srep compress` and inherits the accepted sparse
+input m3 optimization shipped in 0.2.1; it does not change the existing 0.2.1
+packages or their release status. Candidate details and preparation evidence are
+documented in [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
+[`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md).
+No v0.3.0 tag, GitHub release, or publication is claimed.
 
 Rust **1.88.0** is the declared minimum supported Rust version. A locked
 source build on Linux is:
@@ -183,7 +187,7 @@ files, and use the resource options shown by `./srep --help` (`--memory`,
 limit must fail explicitly; it must not silently weaken matching or change the
 format.
 
-For the **0.3.0 development source**, `srep compress` automatically chooses
+For **0.3.0**, `srep compress` automatically chooses
 memory and temporary budgets when those flags are omitted. The memory policy
 starts from half of total physical RAM (not currently available memory), bounded
 by identified visible hard limits; uncertain/unavailable detection uses a
@@ -264,6 +268,15 @@ established. All 9 release assets download and verify; the three native archives
 and the fresh actual-package evidence are summarized, with per-asset hashes and
 download URLs, in
 [`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
+
+Version 0.3.0 is being prepared as the next official release candidate. Its
+resource-default policy is new in 0.3.0; the sparse-input m3 compression
+optimization is inherited unchanged from 0.2.1, not newly implemented or
+remeasured here. Fresh 0.3.0 native and package evidence is pending. Existing
+0.2.1's limited-prerelease status has not been changed, and neither release
+publication nor tag creation is claimed. See
+[`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
+[`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md).
 
 Version 0.2.0 was published as a limited prerelease on 2026-10-10T02:19:26Z
 from commit `6ce0a32b83c625519a427c0d3365e0abfee22d7e`. The native packaging run

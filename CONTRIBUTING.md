@@ -17,12 +17,12 @@ The current source contract is:
 - split indexes are unsupported; and
 - the release default is method m3, with an 8 MiB default block size.
 
-The v0.3.0 development source auto-resolves `srep compress` memory and temp
-budgets when not explicitly supplied. Non-compress commands and the library
-resource default remain 256 MiB / 4 GiB; published 0.2.1 artifacts retain those
-fixed defaults. Do not describe this unreleased source policy as behavior of the
-published 0.2.1 binaries. The detector is best-effort, not a global memory/RSS
-cap; see `docs/releases/v0.3.0.md` for known limits.
+The v0.3.0 candidate auto-resolves `srep compress` memory and temp budgets when
+not explicitly supplied. Non-compress commands and the library resource default
+remain 256 MiB / 4 GiB; existing 0.2.1 artifacts retain those fixed defaults.
+Do not describe this candidate policy as behavior of the existing 0.2.1
+binaries. The detector is best-effort, not a global memory/RSS cap; see
+`docs/releases/v0.3.0.md` for known limits and publication status.
 
 Do not describe historical NGv2 behavior as current behavior. Keep the
 limited-preview compatibility policy honest: no unsupported compatibility,

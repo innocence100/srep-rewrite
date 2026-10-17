@@ -4,14 +4,18 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-### 0.3.0 — in development (unreleased)
+No changes are currently recorded here.
 
-The source tree is versioned 0.3.0 for development. This is **not a published
-release**; do not infer a tag, package, native platform verification, or release
-acceptance from the source version. The already-published 0.2.1 package remains
-unchanged and retains its fixed 256 MiB managed-memory / 4 GiB temp defaults.
+## 0.3.0 — release candidate; publication pending
 
-- `srep compress` now resolves automatic per-run resource budgets when resource
+This candidate is prepared for an official release, but publication, tag
+creation, and native/package acceptance remain pending. The existing 0.2.1
+release remains a limited prerelease, unchanged; its packages retain their fixed
+256 MiB managed-memory / 4 GiB temp defaults. See
+[`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md)
+for preparation scope and pending evidence.
+
+- `srep compress` resolves automatic per-run resource budgets when resource
   flags are omitted: physical-memory/cgroup-aware memory policy and a temp budget
   based on input kind/length. Explicit flags remain independent overrides.
 - Non-compress CLI operations and library `ResourceConfig::default()` retain the
@@ -20,11 +24,17 @@ unchanged and retains its fixed 256 MiB managed-memory / 4 GiB temp defaults.
 - Detection is best-effort, not a host/container/RSS cap. Missing visible Linux
   cgroup levels produce a conservative fallback warning; Windows Job Objects,
   macOS container limits, and RLIMIT_AS are unsupported.
-- Source review R2/R3/R4 and the exact-commit native/CI verification completed on
-  `5d78773f25d2b1c9cb80d5be13bbd1bea1e449a0`; see
-  [`docs/evidence/v0.3.0-native.md`](docs/evidence/v0.3.0-native.md). This remains
-  an unreleased development version: no v0.3.0 tag or GitHub release exists.
-  Final evidence review R4 passed; this does not authorize publication. See
+- Inherits the 0.2.1 sparse-input m3 optimization unchanged: end-order fusion
+  during pass 2, compact authenticated candidate/DP rows, and a bounded optional
+  predecessor directory. NGv3 and matching semantics remain unchanged. This
+  inheritance is not a new 0.3.0 performance measurement or claim; see the
+  unchanged 0.2.1 record below and
+  [`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md).
+- Earlier exact-commit native/CI and candidate-package results on
+  `5d78773f25d2b1c9cb80d5be13bbd1bea1e449a0` remain historical verification, not
+  evidence for the final release candidate or its packages. They are preserved
+  in [`docs/evidence/v0.3.0-native.md`](docs/evidence/v0.3.0-native.md); fresh
+  candidate Actions and actual-package evidence are pending. See also
   [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
   [`docs/plans/v0.3.0-resource-defaults.md`](docs/plans/v0.3.0-resource-defaults.md).
 
