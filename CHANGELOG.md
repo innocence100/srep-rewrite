@@ -6,14 +6,14 @@ All notable changes to this project are documented here.
 
 No changes are currently recorded here.
 
-## 0.3.0 — release candidate; publication pending
+## 0.3.0 — 2026-10-17 (published official release)
 
-This candidate is prepared for an official release, but publication, tag
-creation, and native/package acceptance remain pending. The existing 0.2.1
-release remains a limited prerelease, unchanged; its packages retain their fixed
-256 MiB managed-memory / 4 GiB temp defaults. See
-[`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md)
-for preparation scope and pending evidence.
+**Status: PUBLISHED official/latest**, 2026-10-17T21:43:32Z, release id
+`416081575`, source/tooling `9d47cf9b910278aff0517771ccd728ca84c4b531`, annotated
+tag `0db31748c3391ebd4c74b614e0234dad2fa285ed`. Both exact-source Actions runs
+(native `39034446863`, CI `39034446833`) passed 6/6 jobs. All nine published
+assets were downloaded again and matched the reviewed bundle byte-for-byte.
+See [`docs/evidence/v0.3.0-publication.md`](docs/evidence/v0.3.0-publication.md).
 
 - `srep compress` resolves automatic per-run resource budgets when resource
   flags are omitted: physical-memory/cgroup-aware memory policy and a temp budget
@@ -28,24 +28,33 @@ for preparation scope and pending evidence.
   during pass 2, compact authenticated candidate/DP rows, and a bounded optional
   predecessor directory. NGv3 and matching semantics remain unchanged. This
   inheritance is not a new 0.3.0 performance measurement or claim; see the
-  unchanged 0.2.1 record below and
-  [`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md).
+  0.2.1 historical measurements below and the publication evidence above.
+- Fresh actual-package full72: 72 rows / 360 stages passed with byte-exact
+  restoration and explicit 256 MiB / 32 GiB budgets. Every metric/final-XZ hash
+  matches published 0.2.1; 65 wins / 0 ties / 7 losses, per-method wins
+  11/10/9/12/12/11 under `majority-final-xz-v1`. Fresh 258 MiB auto/fixed tests
+  produce identical archives; default sample07 m3 also passes, with 6029489688 B
+  peak managed temp. Linux observed fallback memory / auto temp, not a measured
+  half-total-RAM origin. This policy is not RAM-utilization redesign or an RSS cap.
 - Earlier exact-commit native/CI and candidate-package results on
   `5d78773f25d2b1c9cb80d5be13bbd1bea1e449a0` remain historical verification, not
   evidence for the final release candidate or its packages. They are preserved
-  in [`docs/evidence/v0.3.0-native.md`](docs/evidence/v0.3.0-native.md); fresh
-  candidate Actions and actual-package evidence are pending. See also
+  in [`docs/evidence/v0.3.0-native.md`](docs/evidence/v0.3.0-native.md); final
+  published-package evidence is recorded separately above. See also
   [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
   [`docs/plans/v0.3.0-resource-defaults.md`](docs/plans/v0.3.0-resource-defaults.md).
 
-## 0.2.1 — 2026-10-15 (published limited prerelease)
+## 0.2.1 — 2026-10-15 (original publication); 2026-10-17 (official promotion)
 
-**Status: PUBLISHED as a limited prerelease.** Release
+**Status: PUBLISHED official; metadata-only promotion on 2026-10-17.** Release
 <https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1>, id
-`414169555`, published 2026-10-15T19:03:54Z from source commit
+`414169555`, originally published as a limited prerelease 2026-10-15T19:03:54Z from source commit
 `6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed` (annotated tag
 `c11c8ce3f3f550521f9b3e952481a75c92a5d0fb`, which peels to that commit). It is
-marked `prerelease` and is not the repository's `latest` release. All nine
+now `prerelease=false`; 0.3.0 is the repository's `latest` release. The promotion
+request/response window was 2026-10-17T21:42:18.241Z–21:42:19.123Z; it did not
+change the original publication timestamp, tag, or any asset. Only status,
+title (removed "preview"), and two body status markers changed. All nine
 assets (three native archives plus six evidence/checksum assets) download and
 verify; the native packaging run `38703862425` passed 6/6 jobs, and the CI run
 `38703862408` passed 6/6 jobs on a failed-jobs-only rerun after its initial

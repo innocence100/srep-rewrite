@@ -1,11 +1,11 @@
 # SREP-NG
 
 SREP-NG is a clean-room Rust implementation of the SuperREP preprocessor. In
-software release **0.2.1**, the current archive format is **SREP-NG v3
+software release **0.3.0**, the current archive format is **SREP-NG v3
 (NGv3)**. NGv3 is the format written by this project and the format read by
 default.
 
-This is an early, explicitly limited preview. The compatibility policy below
+Version 0.3.0 is the current official release. The compatibility policy below
 is the complete promise for this release; compatibility, compression ratio,
 and performance beyond it are not implied.
 
@@ -28,27 +28,37 @@ The current normative wire specification is [`docs/FORMAT-V3.md`](docs/FORMAT-V3
 they are not current NGv2 contracts. The frozen design remains relevant only
 where NGv3 explicitly inherits matching and resource semantics.
 
-## Install the existing 0.2.1 native release artifact
+## Install the official 0.3.0 native release artifact
 
-Version **0.2.1** is published as a **limited prerelease** on GitHub:
+Version **0.3.0** is published as an **official release**, selected as latest:
 
-<https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1>
+<https://github.com/innocence100/srep-rewrite/releases/tag/v0.3.0>
 
-It was published **2026-10-15T19:03:54Z** (release id `414169555`) from source
-commit `6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed` (annotated tag
-`c11c8ce3f3f550521f9b3e952481a75c92a5d0fb`). It is marked `prerelease`, and
-`releases/latest` does not point to it. The release carries three native
+It was published **2026-10-17T21:43:32Z** (release id `416081575`) from source
+and tooling commit `9d47cf9b910278aff0517771ccd728ca84c4b531` (annotated tag
+`0db31748c3391ebd4c74b614e0234dad2fa285ed`). It is neither draft nor prerelease;
+`releases/latest` was verified to identify it. The release carries three native
 platform archives for Linux x86_64, Windows x86_64 MSVC, and macOS ARM64, plus
 its evidence and checksum assets. Exact target, source, compiler, hash, and
 runtime details come from each package's `BUILD-PROVENANCE.json` and `NOTICES`.
 Download URLs, hashes, and caveats are collected in
-[`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
+[`docs/evidence/v0.3.0-publication.md`](docs/evidence/v0.3.0-publication.md).
 
 ```text
-srep-v0.2.1-x86_64-unknown-linux-gnu.tar.gz
-srep-v0.2.1-x86_64-pc-windows-msvc.zip
-srep-v0.2.1-aarch64-apple-darwin.tar.gz
+srep-v0.3.0-x86_64-unknown-linux-gnu.tar.gz
+srep-v0.3.0-x86_64-pc-windows-msvc.zip
+srep-v0.3.0-aarch64-apple-darwin.tar.gz
 ```
+
+| Native download | SHA-256 |
+| --- | --- |
+| [Linux x86_64](https://github.com/innocence100/srep-rewrite/releases/download/v0.3.0/srep-v0.3.0-x86_64-unknown-linux-gnu.tar.gz) | `fcdd79996984b205c6d48dc263e083b8685506365dba8303dd7186d3a408c890` |
+| [Windows x86_64 MSVC](https://github.com/innocence100/srep-rewrite/releases/download/v0.3.0/srep-v0.3.0-x86_64-pc-windows-msvc.zip) | `6c3c7c09d33a86bf39a6990e93c9d17f157ec8ecc8a30112fb76393d65c00990` |
+| [macOS ARM64](https://github.com/innocence100/srep-rewrite/releases/download/v0.3.0/srep-v0.3.0-aarch64-apple-darwin.tar.gz) | `0cf8aa53d60fcd86bdcc3401bd4f1addb26b2761531816a8611ddd19ca73f3f8` |
+
+Download [SHA256SUMS](https://github.com/innocence100/srep-rewrite/releases/download/v0.3.0/SHA256SUMS)
+alongside the selected archive; its own SHA-256 is
+`7f7d5935a21247c43f761fd45e3e3656b5cc28c4bc6a22119fdaa63265a37910`.
 
 These are the three published native archives. Each archive has one directory
 named after its basename without `.tar.gz` or `.zip`; that directory's root
@@ -67,7 +77,7 @@ PLATFORM-README.md
 ```
 
 The package-embedded `README.md` and `CHANGELOG.md` are pre-publication
-snapshots at `6f1357fc` and were intentionally not rewritten; the archives were
+snapshots at `9d47cf9` and were intentionally not rewritten; the archives were
 not repacked after the build.
 
 `SHA256SUMS` is distributed beside the tarball, not inside it. Verify the
@@ -75,25 +85,25 @@ download before unpacking or running it:
 
 ```sh
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf srep-v0.2.1-x86_64-unknown-linux-gnu.tar.gz
-cd srep-v0.2.1-x86_64-unknown-linux-gnu
+tar -xzf srep-v0.3.0-x86_64-unknown-linux-gnu.tar.gz
+cd srep-v0.3.0-x86_64-unknown-linux-gnu
 ./srep --version
 ./srep --help
 ```
 
-Windows PowerShell: run `Get-FileHash .\srep-v0.2.1-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
+Windows PowerShell: run `Get-FileHash .\srep-v0.3.0-x86_64-pc-windows-msvc.zip -Algorithm SHA256`
 and compare with the matching `SHA256SUMS` entry before using `Expand-Archive`.
 In the extracted directory run `.\srep.exe --version` and `.\srep.exe --help`.
 This is an x86_64 MSVC package, not an ARM64 or MinGW package.
 
-On Apple Silicon macOS, run `shasum -a 256 srep-v0.2.1-aarch64-apple-darwin.tar.gz`
+On Apple Silicon macOS, run `shasum -a 256 srep-v0.3.0-aarch64-apple-darwin.tar.gz`
 and compare with the matching entry before unpacking with `tar -xzf`.
 In the extracted directory run `./srep --version` and `./srep --help`.
 The macOS package is ARM64, not Intel/universal. Packages are not publisher
 code-signed or notarized. macOS may require explicit approval in Privacy &
 Security after verification; do not disable Gatekeeper globally.
 
-Observed 0.2.1 runtime requirements from the actual published packages:
+Observed 0.3.0 runtime requirements from the actual published packages:
 
 - **Linux x86_64 glibc:** requires at least **GLIBC_2.34** as observed from the
   binary's GLIBC symbol versions (built on Ubuntu; an observed floor, not a
@@ -107,25 +117,22 @@ Observed 0.2.1 runtime requirements from the actual published packages:
   `LC_CODE_SIGNATURE` with CodeDirectory flags `0x20002` / `CS_ADHOC`); an
   ad-hoc signature does not authenticate a publisher identity.
 
-No other platforms were built or tested for 0.2.1. The published v0.1.0, v0.1.1,
+No other native package targets are supplied for 0.3.0. Windows GNU check/Clippy
+passed, but optional GNU linker tests/build were skipped; no GNU runtime coverage
+is claimed. The published v0.1.0, v0.1.1,
 and v0.2.0 releases are historical and unchanged; the 0.1.0 Linux tarball
 SHA-256 is
 `039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401`.
 
 ## Build from source
 
-The existing software release is **0.2.1**, currently a limited prerelease;
-its native binaries and the 72-row final-XZ fidelity run on the published Linux
-package binary are recorded in
-[`docs/releases/v0.2.1.md`](docs/releases/v0.2.1.md) and
-[`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
-This source is a **0.3.0 release candidate pending publication**. It contains
-automatic resource policy for `srep compress` and inherits the accepted sparse
-input m3 optimization shipped in 0.2.1; it does not change the existing 0.2.1
-packages or their release status. Candidate details and preparation evidence are
-documented in [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
-[`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md).
-No v0.3.0 tag, GitHub release, or publication is claimed.
+The current official release is **0.3.0**, built from `9d47cf9`. This repository
+documentation closeout does not change that immutable tagged source or package
+bytes. It contains automatic resource policy for `srep compress` and inherits
+the accepted sparse-input m3 optimization shipped in 0.2.1. Version 0.2.1 was
+promoted from prerelease to official on 2026-10-17 by metadata only; its tag and
+nine assets remain unchanged. See [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md)
+and [`docs/evidence/v0.3.0-publication.md`](docs/evidence/v0.3.0-publication.md).
 
 Rust **1.88.0** is the declared minimum supported Rust version. A locked
 source build on Linux is:
@@ -191,7 +198,7 @@ For **0.3.0**, `srep compress` automatically chooses
 memory and temporary budgets when those flags are omitted. The memory policy
 starts from half of total physical RAM (not currently available memory), bounded
 by identified visible hard limits; uncertain/unavailable detection uses a
-conservative fallback with a stderr warning. It is best-effort and is not a
+fallback of at most 256 MiB with a stderr warning (even with `--quiet`). It is best-effort and is not a
 container/job/RSS cap. Linux cgroup visibility may be incomplete; Windows Job
 Objects, macOS container limits, and RLIMIT_AS are not detected. The temporary
 limit is `max(32 GiB, input length × 10)` for a regular file, and 32 GiB for stdin
@@ -200,8 +207,18 @@ or a non-regular input; multiplication overflow requires explicit
 resource policy. Non-compress CLI commands and library
 `ResourceConfig::default()` remain fixed at 256 MiB memory / 4 GiB temp. The
 published 0.2.1 binaries retain their historical fixed defaults. See
-[`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) for development status and
+[`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) for published evidence and
 limitations.
+
+This is budget selection, not RAM-utilization algorithm redesign, disk-space
+reservation, or runtime budget growth. The actual Linux package acceptance
+observed 256 MiB fallback / 32 GiB auto temp because cgroup visibility was
+incomplete; it did not demonstrate half-physical-total memory on that host.
+For an explicit, reproducible comparison budget:
+
+```sh
+./srep compress --memory 256MiB --temp-limit 32GiB input.bin input.bin.srep
+```
 
 For every archive, check the result before deleting or replacing the source:
 
@@ -244,7 +261,7 @@ candidate binary (`996dcecf…`), while the release evidence was produced on the
 published, committed Linux package binary (`38a3a045…`). See
 [`docs/evidence/v0.2.0-publication.md`](docs/evidence/v0.2.0-publication.md).
 
-Version 0.2.1 is the current published release. It carries the accepted
+Version 0.2.1, now an official historical release, carries the accepted
 sparse-input m3 optimization with NGv3 and matching semantics unchanged. Its
 final actual-package 72-row comparison on the published Linux binary
 (`8350d23f…`) completed 72/72 byte-identical round trips under the same
@@ -269,14 +286,21 @@ and the fresh actual-package evidence are summarized, with per-asset hashes and
 download URLs, in
 [`docs/evidence/v0.2.1-publication.md`](docs/evidence/v0.2.1-publication.md).
 
-Version 0.3.0 is being prepared as the next official release candidate. Its
-resource-default policy is new in 0.3.0; the sparse-input m3 compression
-optimization is inherited unchanged from 0.2.1, not newly implemented or
-remeasured here. Fresh 0.3.0 native and package evidence is pending. Existing
-0.2.1's limited-prerelease status has not been changed, and neither release
-publication nor tag creation is claimed. See
+Version 0.2.1 was promoted to official on 2026-10-17 without changing assets or
+its tag; its original publication timestamp above remains historical.
+
+Version 0.3.0 is official/latest, published 2026-10-17T21:43:32Z. Native run
+[`39034446863`](https://github.com/innocence100/srep-rewrite/actions/runs/39034446863)
+and CI run [`39034446833`](https://github.com/innocence100/srep-rewrite/actions/runs/39034446833)
+each passed all six jobs on exact source/tooling `9d47cf9`. Fresh actual-package
+full72 acceptance passed all 360 stages with byte-exact restoration under explicit
+256 MiB / 32 GiB budgets. All final-XZ hashes and metrics match published 0.2.1:
+65 wins / 0 ties / 7 losses, per-method wins 11/10/9/12/12/11. The compression
+core is byte-identical to 0.2.1; `src/` changes are confined to CLI/platform
+resource policy. Fresh paired 258 MiB and default sample07 m3 tests also passed.
+Historical optimization timing is not a new 0.3.0 speedup claim. See
 [`docs/releases/v0.3.0.md`](docs/releases/v0.3.0.md) and
-[`docs/evidence/v0.3.0-preparation.md`](docs/evidence/v0.3.0-preparation.md).
+[`docs/evidence/v0.3.0-publication.md`](docs/evidence/v0.3.0-publication.md).
 
 Version 0.2.0 was published as a limited prerelease on 2026-10-10T02:19:26Z
 from commit `6ce0a32b83c625519a427c0d3365e0abfee22d7e`. The native packaging run

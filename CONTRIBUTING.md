@@ -17,15 +17,15 @@ The current source contract is:
 - split indexes are unsupported; and
 - the release default is method m3, with an 8 MiB default block size.
 
-The v0.3.0 candidate auto-resolves `srep compress` memory and temp budgets when
+The published official v0.3.0 release auto-resolves `srep compress` memory and temp budgets when
 not explicitly supplied. Non-compress commands and the library resource default
 remain 256 MiB / 4 GiB; existing 0.2.1 artifacts retain those fixed defaults.
-Do not describe this candidate policy as behavior of the existing 0.2.1
+Do not describe this 0.3.0 policy as behavior of the existing 0.2.1
 binaries. The detector is best-effort, not a global memory/RSS cap; see
 `docs/releases/v0.3.0.md` for known limits and publication status.
 
 Do not describe historical NGv2 behavior as current behavior. Keep the
-limited-preview compatibility policy honest: no unsupported compatibility,
+explicit compatibility policy honest: no unsupported compatibility,
 ratio, performance, or fidelity promise may be inferred from a retained
 historical fixture or a source-only platform check.
 
@@ -41,10 +41,10 @@ Before submitting code changes, use the repository's applicable formatting,
 lint, test, documentation, and release-smoke checks. Native Windows and macOS
 compile, link, and test evidence must come from GitHub Actions on the relevant
 native runners. A Linux cross-compilation check is only a compile hint and is
-not Windows or macOS verification. The published 0.2.1 packages target Linux
+not Windows or macOS verification. The published 0.3.0 packages target Linux
 x86_64 glibc, Windows x86_64 MSVC, and macOS ARM64. Measure runtime requirements
 on each actual package; the historical 0.1.0 GLIBC_2.30 observation does not
-prove the compatibility of a new build, and the 0.2.0 and 0.2.1 Linux packages'
+prove the compatibility of a new build, and the 0.2.0, 0.2.1, and 0.3.0 Linux packages'
 observed GLIBC_2.34 floor is likewise only an observed value for those
 artifacts.
 
@@ -53,8 +53,8 @@ rewrite shared artifacts. In particular, verify that examples use the current
 CLI names, that `CHANGELOG.md` keeps any genuinely new work under `Unreleased`
 until publication (published releases carry their real publication date and
 status; historical notes must remain labeled as history, not as current release
-claims), and that the completed actual-package 72-row comparisons (0.2.0 and
-0.2.1) are not misrepresented as universal quality or performance. The archived
+claims), and that the completed actual-package 72-row comparisons (0.2.0,
+0.2.1, and 0.3.0) are not misrepresented as universal quality or performance. The archived
 local candidate evidence and the final actual-package results are separate
 records; do not merge them. The historical 0.1.0 default-m3 round trip is
 recorded in the release notes as a correctness check; do not turn those raw
@@ -132,8 +132,15 @@ policy"). The separate `ci.yml` debug-profile checks remain unchanged in command
 structure and intentionally run the functional path at debug speed; a genuine
 failure there must be reported, not relabeled as a release-profile pass. Do not
 describe a release as published without an actual, verified artifact. The
-already-published 0.2.1, 0.2.0, 0.1.1, and 0.1.0 releases remain as published; do
+already-published 0.3.0, 0.2.1, 0.2.0, 0.1.1, and 0.1.0 artifacts remain immutable; do
 not repack, move tags, or rewrite their assets.
+
+The 2026-10-17 closeout records official 0.3.0 publication and metadata-only
+0.2.1 promotion in [`docs/evidence/v0.3.0-publication.md`](docs/evidence/v0.3.0-publication.md).
+Package source/tooling stays `9d47cf9`; later documentation commits are not
+package rebuilds. Preserve archived prepublication snapshots (including
+`READY_NOT_PUBLISHED` provenance) and link the separate actual publication
+receipt rather than retrospectively rewriting them.
 
 Push builds use the workflow commit (`github.sha`) for both source and tooling.
 Manual dispatch requires an explicit source ref, full expected source SHA, and
