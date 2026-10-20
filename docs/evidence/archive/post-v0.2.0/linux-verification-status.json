@@ -1,0 +1,402 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "cargo": "cargo 1.88.0 (873a06493 2025-05-10)",
+  "commands": [
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T02:56:22.001+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/01-fmt.log",
+      "name": "fmt",
+      "started_at": "2026-10-14T02:56:21.372+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "check",
+        "--locked",
+        "--all-targets",
+        "--all-features"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T02:56:22.069+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/02-check.log",
+      "name": "check",
+      "started_at": "2026-10-14T02:56:22.001+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "run",
+        "--locked",
+        "--bin",
+        "requirement-audit",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T02:56:22.526+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/03-requirement_audit.log",
+      "name": "requirement_audit",
+      "started_at": "2026-10-14T02:56:22.070+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "clippy",
+        "--locked",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T02:56:22.707+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/04-clippy.log",
+      "name": "clippy",
+      "started_at": "2026-10-14T02:56:22.527+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "test",
+        "--locked",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:46:31.021+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/05-test_debug.log",
+      "name": "test_debug",
+      "started_at": "2026-10-14T02:56:22.708+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "test",
+        "--locked",
+        "--release",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "--test-threads=1"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:10.428+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/06-test_release.log",
+      "name": "test_release",
+      "started_at": "2026-10-14T03:46:31.022+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "test",
+        "--locked",
+        "--doc"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:11.087+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/07-test_doc.log",
+      "name": "test_doc",
+      "started_at": "2026-10-14T03:53:10.429+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "doc",
+        "--locked",
+        "--no-deps"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:12.534+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/08-doc.log",
+      "name": "doc",
+      "started_at": "2026-10-14T03:53:11.087+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "build",
+        "--locked",
+        "--release"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:12.597+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/09-build_release.log",
+      "name": "build_release",
+      "started_at": "2026-10-14T03:53:12.534+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "rustup",
+        "run",
+        "1.88.0",
+        "cargo",
+        "build",
+        "--locked",
+        "--bin",
+        "srep",
+        "--example",
+        "stage6-fixed-metrics",
+        "--example",
+        "stage7-m5-metrics"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:12.661+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/10-build_binaries_examples.log",
+      "name": "build_binaries_examples",
+      "started_at": "2026-10-14T03:53:12.598+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/audit-lock-licenses.sh"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:12.862+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/11-audit_lock_licenses.log",
+      "name": "audit_lock_licenses",
+      "started_at": "2026-10-14T03:53:12.662+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/test-license-audit.sh"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:13.226+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/12-test_license_audit.log",
+      "name": "test_license_audit",
+      "started_at": "2026-10-14T03:53:12.863+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/test-ci-yaml.py"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:13.361+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/13-test_ci_yaml.log",
+      "name": "test_ci_yaml",
+      "started_at": "2026-10-14T03:53:13.227+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/test-native-release-workflow.py"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:53:13.490+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/14-test_native_release_workflow.log",
+      "name": "test_native_release_workflow",
+      "started_at": "2026-10-14T03:53:13.361+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/test-fidelity-evaluator.py"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:26.563+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/15-test_fidelity_evaluator.log",
+      "name": "test_fidelity_evaluator",
+      "started_at": "2026-10-14T03:53:13.491+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/test-benchmark-sparse.py"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:44.830+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/16-test_benchmark_sparse.log",
+      "name": "test_benchmark_sparse",
+      "started_at": "2026-10-14T03:55:26.564+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "sh",
+        "-n",
+        "scripts/regenerate-legacy-fixtures.sh"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:44.834+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/17-shell_syntax.log",
+      "name": "shell_syntax",
+      "started_at": "2026-10-14T03:55:44.830+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "compileall",
+        "-q",
+        "scripts"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:44.886+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/18-python_compileall.log",
+      "name": "python_compileall",
+      "started_at": "2026-10-14T03:55:44.835+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/compare-fixed-finders.py",
+        "--decoder",
+        "target/debug/srep"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:47.259+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/19-compare_fixed_finders.log",
+      "name": "compare_fixed_finders",
+      "started_at": "2026-10-14T03:55:44.887+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/compare-m5-finder.py",
+        "--decoder",
+        "target/debug/srep",
+        "--metrics-binary",
+        "target/debug/examples/stage7-m5-metrics"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:48.448+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/20-compare_m5_finder.log",
+      "name": "compare_m5_finder",
+      "started_at": "2026-10-14T03:55:47.260+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/validate-legacy-fixtures.py",
+        "--acceptance",
+        "--decoder",
+        "target/debug/srep"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:55:54.434+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/21-validate_legacy_fixtures.log",
+      "name": "validate_legacy_fixtures",
+      "started_at": "2026-10-14T03:55:48.449+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/run-legacy-corruptions.py",
+        "target/debug/srep"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:56:01.160+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/22-legacy_corruptions.log",
+      "name": "legacy_corruptions",
+      "started_at": "2026-10-14T03:55:54.435+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "python3",
+        "scripts/test-legacy-tools.py"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:56:48.130+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/23-legacy_tools.log",
+      "name": "legacy_tools",
+      "started_at": "2026-10-14T03:56:01.161+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/release-smoke.sh"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:56:51.464+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/24-release_smoke.log",
+      "name": "release_smoke",
+      "started_at": "2026-10-14T03:56:48.131+00:00",
+      "status": "passed"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "finished_at": "2026-10-14T03:56:51.483+00:00",
+      "log": "<evidence>/post-v0.2.0/linux-verification/25-diff_check.log",
+      "name": "diff_check",
+      "started_at": "2026-10-14T03:56:51.465+00:00",
+      "status": "passed"
+    }
+  ],
+  "debug_binary_sha256_after": "a70c489864bbb29322c1d0481ffc869e2a62d3a3eb5d577442a6947610e65eac",
+  "exit_code": 0,
+  "finished_at": "2026-10-14T03:56:51.484+00:00",
+  "head": "f77e1068085446687b2dc30c6ebec004c9a098f1",
+  "repo": "<workspace>/post-v0.2.0",
+  "source_diff_sha256_after": "0e8d8c1ee23565c09115b00074821270d4c12222066efcaf7862ec4465dc4bca",
+  "source_diff_sha256_before": "0e8d8c1ee23565c09115b00074821270d4c12222066efcaf7862ec4465dc4bca",
+  "started_at": "2026-10-14T02:56:21.311+00:00",
+  "status": "passed",
+  "toolchain": "rustc 1.88.0 (6b00bc388 2025-06-23)\nbinary: rustc\ncommit-hash: 6b00bc3880198600130e1cf62b8f8a93494488cc\ncommit-date: 2025-06-23\nhost: x86_64-unknown-linux-gnu\nrelease: 1.88.0\nLLVM version: 20.1.5"
+}

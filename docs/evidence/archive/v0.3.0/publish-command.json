@@ -1,0 +1,9 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "completed": "2026-10-17T21:43:32.754Z",
+  "exit_code": 0,
+  "operation": "publish-030-official-latest",
+  "started": "2026-10-17T21:43:30.974Z",
+  "stderr": "",
+  "stdout": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.3.0\n"
+}

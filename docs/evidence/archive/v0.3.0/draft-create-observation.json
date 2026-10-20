@@ -1,0 +1,11 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "completed": "2026-10-17T21:42:42.153Z",
+  "draft": true,
+  "id": 416081575,
+  "operation": "030-create-draft",
+  "started": "2026-10-17T21:42:41.264Z",
+  "tag": "v0.3.0",
+  "tag_object": "0db31748c3391ebd4c74b614e0234dad2fa285ed",
+  "target_commit": "9d47cf9b910278aff0517771ccd728ca84c4b531"
+}

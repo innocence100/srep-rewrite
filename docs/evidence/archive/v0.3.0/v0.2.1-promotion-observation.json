@@ -1,0 +1,11 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "assets_unchanged": true,
+  "completed": "2026-10-17T21:42:19.123Z",
+  "id": 414169555,
+  "operation": "021-metadata-only-official-promotion",
+  "payload_sha256": "00cb6c3891a87e2ba99965cf921bc754c763e7cb79c3d9b17fdb294be7c7f606",
+  "prerelease": false,
+  "started": "2026-10-17T21:42:18.241Z",
+  "url": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1"
+}

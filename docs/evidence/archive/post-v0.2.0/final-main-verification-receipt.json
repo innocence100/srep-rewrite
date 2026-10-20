@@ -1,0 +1,223 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "acceptance": {
+    "documentation_closeout": {
+      "global_round": 8,
+      "status": "PASS"
+    },
+    "final_evidence_review": {
+      "global_round": 7,
+      "optimization_round": "4/5",
+      "review_id": "[redacted internal identifier]",
+      "status": "PASS"
+    },
+    "native_and_regular_ci": {
+      "both": "6/6 success",
+      "prior_ci_run": "https://github.com/innocence100/srep-rewrite/actions/runs/38510825006",
+      "prior_native_run": "https://github.com/innocence100/srep-rewrite/actions/runs/38510825260"
+    },
+    "source_review": {
+      "commit": "4af679fd4292c3f864db1eb717e48f504e58e78a",
+      "status": "PASS"
+    }
+  },
+  "automatic_push_ci": {
+    "conclusion": "success",
+    "event": "push",
+    "head_sha": "1777d4728113e997af32f2d7a9c553de3b0b06a9",
+    "ignored_all_target_tests": [
+      "offload::generation_tests::profile_sample03_m3_intervals_only (manual sample03 diagnostic)",
+      "stage8::ignored_m1_finder_discovers_a_match_across_256_mib_history (manual >256-MiB m1 acceptance)"
+    ],
+    "jobs": [
+      {
+        "conclusion": "success",
+        "id": 115712920525,
+        "name": "verify"
+      },
+      {
+        "all_target_tests": {
+          "failed": 0,
+          "ignored": 2,
+          "passed": 498,
+          "sum_target_seconds": 2052.49,
+          "targets": 26
+        },
+        "conclusion": "success",
+        "id": 115712920616,
+        "name": "Native ubuntu-latest Rust 1.88.0"
+      },
+      {
+        "all_target_tests": {
+          "failed": 0,
+          "ignored": 2,
+          "passed": 493,
+          "sum_target_seconds": 2488.91,
+          "targets": 26
+        },
+        "conclusion": "success",
+        "id": 115712920648,
+        "name": "Native windows-latest Rust 1.88.0"
+      },
+      {
+        "all_target_tests": {
+          "failed": 0,
+          "ignored": 2,
+          "passed": 493,
+          "sum_target_seconds": 1341.2,
+          "targets": 26
+        },
+        "conclusion": "success",
+        "id": 115712920731,
+        "name": "windows-test"
+      },
+      {
+        "all_target_tests": {
+          "failed": 0,
+          "ignored": 2,
+          "passed": 499,
+          "sum_target_seconds": 5392.46,
+          "targets": 26
+        },
+        "conclusion": "success",
+        "id": 115712920796,
+        "name": "Native macos-latest Rust 1.88.0"
+      },
+      {
+        "all_target_tests": {
+          "failed": 0,
+          "ignored": 2,
+          "passed": 499,
+          "sum_target_seconds": 5400.38,
+          "targets": 26
+        },
+        "conclusion": "success",
+        "id": 115712920835,
+        "name": "Native macos-latest Rust stable"
+      }
+    ],
+    "jobs_summary": "All six required jobs succeeded; there were no failed/skipped jobs. The run produced zero artifacts, as expected for regular CI.",
+    "run_id": 38521785901,
+    "status": "completed",
+    "url": "https://github.com/innocence100/srep-rewrite/actions/runs/38521785901",
+    "verify_profiles": {
+      "debug": {
+        "failed": 0,
+        "ignored": 2,
+        "passed": 498,
+        "sum_target_seconds": 1439.61
+      },
+      "doc_tests": {
+        "failed": 0,
+        "ignored": 2,
+        "passed": 0
+      },
+      "release": {
+        "failed": 0,
+        "ignored": 2,
+        "passed": 498,
+        "sum_target_seconds": 191.53
+      }
+    },
+    "workflow": ".github/workflows/ci.yml"
+  },
+  "evidence_files": [
+    "38521785901-run.json",
+    "38521785901-jobs.json",
+    "38521785901-logs.zip",
+    "38521785901-logs/",
+    "main-branch.json",
+    "main-push-runs.json",
+    "tags.json",
+    "v0.1.0-tag-object.json",
+    "v0.1.1-tag-object.json",
+    "v0.2.0-tag-object.json",
+    "release-v010.json",
+    "release-v011.json",
+    "release-v020.json"
+  ],
+  "fast_forward": {
+    "changed_paths": [
+      "CHANGELOG.md",
+      "docs/evidence/post020-sparse-investigation.md",
+      "docs/plans/post020-sparse-optimization.md"
+    ],
+    "changed_paths_comparison_base": "4af679fd4292c3f864db1eb717e48f504e58e78a (native-tested commit)",
+    "commit": "1777d4728113e997af32f2d7a9c553de3b0b06a9",
+    "local_checkouts": {
+      "post020": {
+        "head": "1777d4728113e997af32f2d7a9c553de3b0b06a9",
+        "worktree": "clean"
+      },
+      "publication_baseline": {
+        "head": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+        "pre-existing_untracked": [
+          "512MiB/",
+          "reports/"
+        ],
+        "tracked_worktree": "clean"
+      }
+    },
+    "main_ref_observed": "1777d4728113e997af32f2d7a9c553de3b0b06a9",
+    "parent": "4af679fd4292c3f864db1eb717e48f504e58e78a",
+    "previous_main": "f77e1068085446687b2dc30c6ebec004c9a098f1",
+    "relationship": "1777d4728113e997af32f2d7a9c553de3b0b06a9 is a documentation-only commit directly on native-tested commit 4af679fd4292c3f864db1eb717e48f504e58e78a; f77e1068085446687b2dc30c6ebec004c9a098f1 was the prior main ref before the reviewed implementation fast-forward.",
+    "source_build_test_tree_diff": "empty: Cargo.toml, Cargo.lock, src/, tests/, scripts/, .github/ are identical between 4af679fd4292c3f864db1eb717e48f504e58e78a and 1777d4728113e997af32f2d7a9c553de3b0b06a9"
+  },
+  "preservation": {
+    "no_repo_mutations": "No application repo files, index, commit, branch, tags, release assets, or workflow dispatch were changed by this verification.",
+    "original_dirty_checkout": {
+      "head": "b41e784cce01288334ceb3ee45d764f15c95fb86",
+      "note": "Verified HEAD remains b41e784cce01288334ceb3ee45d764f15c95fb86; original 35 modified/deleted tracked paths, untracked additions, and stash@{0} preserved.",
+      "path": "<workspace>/original-checkout"
+    },
+    "original_stash": "stash@{0}: On fidelity-acceptance-20260911: [redacted internal task] pre-msrv dirty algorithm work 0cadbc9"
+  },
+  "prior_chronological_receipt_preserved": {
+    "path": "<evidence>/post-v0.2.0/native/verification-receipt.json",
+    "sha256": "1440e05c33cfc5a14f1d2b6459759f1958bc03565ba90c96ded394e0e066a019"
+  },
+  "publication_preservation": {
+    "comparison": "Live asset names, sizes, and SHA-256 API digests match the prior [redacted internal task] receipt (v0.1.0/v0.1.1) and publication-v0.2.0 receipt. All three annotated tag refs and peeled commits match prior evidence.",
+    "v0.1.0": {
+      "asset_count": 2,
+      "assets_unchanged": true,
+      "peeled_commit": "2980d782e647286d996fb5e8230e72b8e16c7a05",
+      "release_id": 394791284,
+      "tag_object": "39dfcb079ddb2b9dc7b4f21ce00a8f75a7f4514d"
+    },
+    "v0.1.1": {
+      "asset_count": 5,
+      "assets_unchanged": true,
+      "peeled_commit": "8b0e9056fad4e91e63b0cac169afb0ade322cf90",
+      "release_id": 399148285,
+      "tag_object": "bd728b1dc61c9669bd09ced5e4525e70149c2e33"
+    },
+    "v0.2.0": {
+      "asset_count": 10,
+      "assets_unchanged": true,
+      "peeled_commit": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+      "release_id": 408532238,
+      "tag_object": "eb4d54deee5db1c0a1335f880a6b16aeaceead99"
+    }
+  },
+  "scope": "Verify documentation-only fast-forward and its automatic push CI. No implementation/docs edits, release operations, tag writes, dispatches, or reviewer invocations.",
+  "source_and_optimization_record": {
+    "native_tested_code_commit": "4af679fd4292c3f864db1eb717e48f504e58e78a",
+    "production_source_diff_sha256_vs_6ce0a32b83c625519a427c0d3365e0abfee22d7e": "0e8d8c1ee23565c09115b00074821270d4c12222066efcaf7862ec4465dc4bca",
+    "same_host_sparse_m3_only": {
+      "archive_identity": "byte-identical for the measured sample-07 m3 comparison",
+      "elapsed_reduction_percent": 59.6,
+      "elapsed_seconds_after": 4298.326,
+      "elapsed_seconds_before": 10638.203,
+      "managed_temp_bytes_after": 6029489688,
+      "managed_temp_bytes_before": 9646868416,
+      "managed_temp_gib_after": 5.6154,
+      "managed_temp_gib_before": 8.984346,
+      "managed_temp_peak_reduction_percent": 37.5
+    },
+    "scope_note": "These measurements describe only the controlled same-host frozen sample-07 m3 comparison; not all methods, inputs, or platforms.",
+    "unreleased": "No optimization release/tag/package was created. Prior native workflow artifacts labeled 0.2.0 are development verification outputs, distinct from the published v0.2.0 packages."
+  },
+  "task": "archived verification [original internal attribution redacted]"
+}

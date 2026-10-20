@@ -1,0 +1,298 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "acceptance_summary": {
+    "all_10_assets_downloaded_and_verified": true,
+    "final_package_sha_verified": true,
+    "old_releases_preserved": true,
+    "overall": "COMPLETE",
+    "published_time_verified": true,
+    "release_url_verified": true,
+    "tag_verified_annotated_and_peeled": true
+  },
+  "asset_set": {
+    "all_state_uploaded": true,
+    "assets": [
+      {
+        "digest": "sha256:6c9c5b682db398b7ef1a78fa77d5533382b1ed7e7186c577facb9abaaac913c2",
+        "downloaded_sha256_matches": true,
+        "id": 626767421,
+        "name": "srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz",
+        "size": 757749,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:c470a36c1c8aed9267d7235a289bb533e30397a4d70a5bcd9e2b8c54579d10c1",
+        "downloaded_sha256_matches": true,
+        "id": 626767429,
+        "name": "srep-v0.2.0-x86_64-pc-windows-msvc.zip",
+        "size": 961946,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:1b8de450700fa214f57262e2d8b0e77011bddbb39e970e51100849d524a644fd",
+        "downloaded_sha256_matches": true,
+        "id": 626767432,
+        "name": "srep-v0.2.0-aarch64-apple-darwin.tar.gz",
+        "size": 686230,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:1c2b7cce3268b21bc38483369a34a114d1d59dd9cd79ef7d9b74ae4af4b9f682",
+        "downloaded_sha256_matches": true,
+        "id": 626767431,
+        "name": "fidelity-report-legacy-policy.json",
+        "size": 382074,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:2bb25d7da21e8935a2613ac6c53775c32fd1f7737f89b50f9679356e9f278a98",
+        "downloaded_sha256_matches": true,
+        "id": 626767418,
+        "name": "fidelity-majority-reassessment.json",
+        "size": 16317,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:402ca803ab6fffd3992940a2d7f86f2670f7035653f29a3733fa97b3ef4e59ff",
+        "downloaded_sha256_matches": true,
+        "id": 626767439,
+        "name": "fidelity-report-release.json",
+        "size": 373671,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:4a8ee4f26c1d8b6ded54f930c2eb4134c100578783de0a7e3525c71aea084a5a",
+        "downloaded_sha256_matches": true,
+        "id": 626767459,
+        "name": "large-report-release.json",
+        "size": 5060,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:b601c549761ce40a0d7178c903e3de8fde588df3de182d6fc8be3dd4b82674eb",
+        "downloaded_sha256_matches": true,
+        "id": 626767462,
+        "name": "resource-summary-release.json",
+        "size": 4459,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:0d9d78e4e0a234f10380dc456f00fca46c04ff5f0b0874a64c374d068b377914",
+        "downloaded_sha256_matches": true,
+        "id": 626767474,
+        "name": "release-provenance.json",
+        "size": 11148,
+        "state": "uploaded"
+      },
+      {
+        "digest": "sha256:b80af113e4ef50f8f3aca8376599bfb2cba560d038753a3445a4ec42dc9a0867",
+        "downloaded_sha256_matches": true,
+        "id": 626767478,
+        "name": "SHA256SUMS",
+        "size": 897,
+        "state": "uploaded"
+      }
+    ],
+    "count": 10,
+    "expected_count": 10,
+    "expected_set_matches_prep_bundle": true
+  },
+  "download_verification": {
+    "all_downloaded_basenames_byte_equal_to_prep_bundle": true,
+    "downloaded_file_count": 10,
+    "fresh_download_dir": "<evidence>/v0.2.0/publication-v0.2.0/downloads",
+    "method": "gh release download v0.2.0 --repo innocence100/srep-rewrite --dir <fresh downloads>",
+    "note": "Every downloaded basename was re-hashed and compared one-to-one against the prep bundle; SHA256SUMS itself included. All MATCH.",
+    "sha256sum_check": "PASS (9/9 listed assets OK)",
+    "sha256sum_check_exit_code": 0,
+    "sha256sums_self_matches_task_expected": true,
+    "sha256sums_self_sha256": "b80af113e4ef50f8f3aca8376599bfb2cba560d038753a3445a4ec42dc9a0867"
+  },
+  "generated_by": "archived verification [original internal attribution redacted]",
+  "integrity_notes": {
+    "normalization_applied": false,
+    "reason": "The GitHub API returns the body verbatim; observed sha256 equals the task-expected value without normalization.",
+    "release_body_exact_match": true,
+    "release_body_sha256_expected": "03ab10c882277db0b2d8656ae0548383d740c9a0a188eba6b22ceea3f657ffa2",
+    "release_body_sha256_observed": "03ab10c882277db0b2d8656ae0548383d740c9a0a188eba6b22ceea3f657ffa2"
+  },
+  "old_release_preservation": {
+    "unchanged_after_publication": true,
+    "v0.1.0": {
+      "annotated_tag_object_sha": "39dfcb079ddb2b9dc7b4f21ce00a8f75a7f4514d",
+      "asset_count": 2,
+      "assets": [
+        {
+          "digest": "sha256:6fc08c5db7e853dcab7f3a6647e33efbc3cf9d87c92c33da53d4688e2524b0d4",
+          "name": "SHA256SUMS",
+          "size": 110,
+          "state": "uploaded"
+        },
+        {
+          "digest": "sha256:039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401",
+          "name": "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+          "size": 626703,
+          "state": "uploaded"
+        }
+      ],
+      "draft": false,
+      "id": 394791284,
+      "linux_asset_digest_matches_task_expected": true,
+      "peeled_commit_sha": "2980d782e647286d996fb5e8230e72b8e16c7a05",
+      "prerelease": true,
+      "published_at": "2026-09-23T15:17:59Z",
+      "sums_digest_matches_task_expected": true,
+      "tag_name": "v0.1.0",
+      "tag_ref": "refs/tags/v0.1.0",
+      "tagger": {
+        "date": "2026-09-23T15:17:22Z",
+        "email": "[redacted personal attribution]",
+        "name": "[redacted personal attribution]"
+      }
+    },
+    "v0.1.1": {
+      "annotated_tag_object_sha": "bd728b1dc61c9669bd09ced5e4525e70149c2e33",
+      "asset_count": 5,
+      "assets": [
+        {
+          "digest": "sha256:1acf2d9030f560b0070921f9b7a373daf8a78e67ad8ce22d9634ee4e511fa4b6",
+          "name": "release-provenance.json",
+          "size": 7694,
+          "state": "uploaded"
+        },
+        {
+          "digest": "sha256:5b895ba11910fec0c51a3343b4b3343d21eedb42030f36b5afc28c62c7e42eb3",
+          "name": "SHA256SUMS",
+          "size": 321,
+          "state": "uploaded"
+        },
+        {
+          "digest": "sha256:588f12cfc25ede15ca41f95a0ffa63ea47365fa89ff1b63da0fb26c4d1dca4b6",
+          "name": "srep-v0.1.1-aarch64-apple-darwin.tar.gz",
+          "size": 548364,
+          "state": "uploaded"
+        },
+        {
+          "digest": "sha256:e04876e229740289bcafd3e0e2b2cd75c684a2dc2989d59951403cdd5f147447",
+          "name": "srep-v0.1.1-x86_64-pc-windows-msvc.zip",
+          "size": 706990,
+          "state": "uploaded"
+        },
+        {
+          "digest": "sha256:bf2f5f6a11f1dfe11309f4158991330042335fa22e3f5fab3ca9ccaea77c125b",
+          "name": "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz",
+          "size": 612478,
+          "state": "uploaded"
+        }
+      ],
+      "draft": false,
+      "id": 399148285,
+      "peeled_commit_sha": "8b0e9056fad4e91e63b0cac169afb0ade322cf90",
+      "prerelease": true,
+      "published_at": "2026-09-29T12:57:56Z",
+      "root011_raw_publication_byte_equal": true,
+      "root011_raw_publication_path": "<evidence>/v0.1.1/native-36562925388/publication",
+      "tag_name": "v0.1.1",
+      "tag_ref": "refs/tags/v0.1.1",
+      "tagger": {
+        "date": "2026-09-29T12:51:03Z",
+        "email": "[redacted personal attribution]",
+        "name": "[redacted personal attribution]"
+      }
+    }
+  },
+  "prep_manifest_chronology": {
+    "note": "The hashed prep manifest intentionally records the pre-publication status (prepared before tag creation) and was NOT edited. This receipt records the new post-publication facts separately.",
+    "prep_bundle_sha256sums_check": "PASS",
+    "prep_dir": "<evidence>/v0.2.0/publication-v0.2.0-prep",
+    "provenance_status_in_manifest": "VERIFIED_PUBLICATION_CANDIDATE",
+    "unchanged_after_publication": true
+  },
+  "prepublication_validator_on_downloads": {
+    "checks": {
+      "archives_members_provenance": "ok",
+      "final_report": "ok",
+      "large_report": "ok",
+      "legacy_and_reassessment": "ok",
+      "native_smoke": "ok",
+      "provenance": "ok",
+      "resource_summary_recomputed": "ok",
+      "runs_job_ids": "ok",
+      "sha256sums": "ok"
+    },
+    "exit_code": 0,
+    "invocation": "python3 validation.py --bundle <downloads> --native <evidence>/v0.2.0/native-6ce0a32 --json",
+    "manifest_status_preserved": "VERIFIED_PUBLICATION_CANDIDATE (unchanged; chronology prepared before tag)",
+    "ready": true,
+    "script": "<evidence>/v0.2.0/publication-v0.2.0-prep/validation.py",
+    "validates_on_actual_downloaded_bytes": [
+      "asset bytes + SHA256SUMS exact set",
+      "internal archive member binaries + embedded BUILD-PROVENANCE.json (source/tooling 6ce0a32, worktree clean, version 0.2.0)",
+      "release smoke evidence (2 round-trips, 10 steps, exit 0, --version/--help)",
+      "recorded 6 native + 6 CI job IDs/status against downloaded run JSON + upload digests",
+      "raw legacy report (complete:true/pass:false) + majority reassessment (65/0/7)",
+      "FINAL actual-package report (38a3a045, complete/pass, 65/0/7) + large report hash binding",
+      "resource summary recomputed from report streams"
+    ],
+    "verdict": "PASS"
+  },
+  "release": {
+    "body_bytes": 7696,
+    "body_matches_prep_release_body_md": true,
+    "body_sha256": "03ab10c882277db0b2d8656ae0548383d740c9a0a188eba6b22ceea3f657ffa2",
+    "body_trailing_newline_preserved": true,
+    "created_at": "2026-10-10T02:16:31Z",
+    "draft": false,
+    "id": 408532238,
+    "latest": false,
+    "latest_note": "`releases/latest` returns HTTP 404 because every release in this repo is a prerelease; consistent with latest=false.",
+    "name": "SREP-NG v0.2.0 — bounded-memory offload preview",
+    "prerelease": true,
+    "published_at": "2026-10-10T02:19:26Z",
+    "repository": "innocence100/srep-rewrite",
+    "tag_name": "v0.2.0",
+    "target_commitish": "main",
+    "url": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.0"
+  },
+  "repository_state_readonly": {
+    "branch": "refs/heads/ci/native-release/v0.2.0",
+    "changelog_blob_sha256_at_head": "b655eb33fa11d3831830b7a9c8244854f06c9606cd8bbee38756805c2ea03e92",
+    "head_sha": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+    "path": "<workspace>/v0.2.0",
+    "readme_blob_sha256_at_head": "2da8cba6aeeecb7ee33ddd2dd9916104f7785a68237d59d98ea662d681e85a28",
+    "stash_entries": 0,
+    "tracked_modifications": 0,
+    "untracked": [
+      "512MiB/",
+      "reports/"
+    ],
+    "untracked_note": "Pre-existing untracked artifacts; not touched by this task."
+  },
+  "schema": "srep-publication-receipt/v1",
+  "source_commit": {
+    "author": "[redacted personal attribution]",
+    "date": "2026-10-09T13:46:49Z",
+    "default_branch_head_main": "b41e784cce01288334ceb3ee45d764f15c95fb86",
+    "first_line": "Enforce performance timing budgets in release tests",
+    "sha": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+    "tree_sha": "b6ec4afe40b35e5d745501274f2a2aec475a7c4d"
+  },
+  "tag": {
+    "annotated_tag_object_sha": "eb4d54deee5db1c0a1335f880a6b16aeaceead99",
+    "expected_peel_commit_matches": true,
+    "peeled_commit_sha": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+    "peeled_commit_type": "commit",
+    "ref": "refs/tags/v0.2.0",
+    "ref_object_sha": "eb4d54deee5db1c0a1335f880a6b16aeaceead99",
+    "ref_object_type": "tag",
+    "tag_message_first_line": "SREP-NG v0.2.0 limited prerelease",
+    "tagger": {
+      "date": "2026-10-10T02:16:31Z",
+      "email": "[redacted personal attribution]",
+      "name": "[redacted personal attribution]"
+    }
+  },
+  "task": "archived verification [original internal attribution redacted]",
+  "verification_scope": "READ-ONLY: download-and-verify of an already-published GitHub release. No source, Git, tag, release, or asset writes.",
+  "verification_time_utc": "2026-10-10T10:25:00Z"
+}

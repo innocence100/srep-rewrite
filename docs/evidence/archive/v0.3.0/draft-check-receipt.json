@@ -1,0 +1,29 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "checked_at_utc": "2026-10-17T21:43:22.973Z",
+  "historical010_011_020_metadata_asset_identity_and_tag_unchanged": true,
+  "latest_observation": {
+    "contract": "draft: no latest or official 0.2.1 only",
+    "http_status": 200,
+    "observed_release_id": 414169555,
+    "observed_tag": "v0.2.1"
+  },
+  "mode": "--draft",
+  "release021": {
+    "assets_unchanged": true,
+    "body_sha256": "640c86110e3333c1f99daff7dbc75d6d11f3b755a02547c6b836ae38fda24801",
+    "id": 414169555,
+    "original_published_at": "2026-10-15T19:03:54Z",
+    "promotion_time": "Use parent PATCH request/response observation window; published_at is NOT the promotion time."
+  },
+  "release030": {
+    "annotated_tag_object": "0db31748c3391ebd4c74b614e0234dad2fa285ed",
+    "draft": true,
+    "id": 416081575,
+    "latest_verified": false,
+    "nine_fresh_downloads_byte_identical": true,
+    "published_at": null,
+    "source": "9d47cf9b910278aff0517771ccd728ca84c4b531"
+  },
+  "result": "PASS"
+}

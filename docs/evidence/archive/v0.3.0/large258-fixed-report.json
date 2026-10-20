@@ -1,0 +1,196 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "archive": "/acceptance/large258-fixed/work/archive.srep",
+  "archive_sha256": "1bfa2d31be0afbf0880f5a0e4098f9c593b9f643a50523c03b84db4d81f44fc9",
+  "binary": "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+  "binary_sha256": "eba65e05c7fa9222afcb5fb84034afc7f82b2be6f483c4ebc48e42e8abd82eba",
+  "binary_sha256_start": "eba65e05c7fa9222afcb5fb84034afc7f82b2be6f483c4ebc48e42e8abd82eba",
+  "cli": {
+    "checksum_override": false,
+    "compress": [
+      "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+      "compress",
+      "--temp-dir",
+      "/acceptance/large258-fixed/temp",
+      "--memory",
+      "256MiB",
+      "--temp-limit",
+      "32GiB",
+      "/acceptance/large258-fixed/work/input.bin",
+      "/acceptance/large258-fixed/work/archive.srep"
+    ],
+    "decompress": [
+      "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+      "decompress",
+      "--temp-dir",
+      "/acceptance/large258-fixed/temp",
+      "--memory",
+      "256MiB",
+      "--temp-limit",
+      "32GiB",
+      "/acceptance/large258-fixed/work/archive.srep",
+      "/acceptance/large258-fixed/work/output.bin"
+    ],
+    "info": [
+      "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+      "info",
+      "/acceptance/large258-fixed/work/archive.srep"
+    ],
+    "layout_override": false,
+    "method_override": false,
+    "test": [
+      "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+      "test",
+      "/acceptance/large258-fixed/work/archive.srep"
+    ]
+  },
+  "expected_defaults": {
+    "checksum": "xxh3",
+    "format": "SREP-NG v3",
+    "layout": "index",
+    "method": "m3"
+  },
+  "info_fields": {
+    "block size": "8388608",
+    "blocks": "33",
+    "checksum": "xxh3",
+    "covered bytes": "1048576",
+    "format": "SREP-NG v3",
+    "layout": "index",
+    "literal bytes": "269484032",
+    "method": "m3",
+    "minimum match": "512",
+    "original size": "270532608",
+    "payload size": "269484164",
+    "semantic matches": "1"
+  },
+  "input_sha256": "c6c2c4a0735a006faf10ffec7dce05ecd23366a5da071f5d5dfdb3b0eb38f0a8",
+  "keep_input": true,
+  "ok": true,
+  "output_sha256": "c6c2c4a0735a006faf10ffec7dce05ecd23366a5da071f5d5dfdb3b0eb38f0a8",
+  "recipe": {
+    "all_zeros": false,
+    "path": "/acceptance/large258-fixed/work/input.bin",
+    "recipe_id": "repeat-1mib-separated-256mib-unique-v1",
+    "repeat_block_sha256": "6813eef1b7c79a62e4a29e2a6482a9f4ad00aafca73c65004ad3fb8fa40a36c6",
+    "repeat_len": 1048576,
+    "sha256": "c6c2c4a0735a006faf10ffec7dce05ecd23366a5da071f5d5dfdb3b0eb38f0a8",
+    "size_bytes": 270532608,
+    "sparse": false,
+    "unique_len": 268435456,
+    "unique_sha256": "012e16fa5783f13cda6688e16f717336604f7ae139eae7c47da2e03cea935cb0"
+  },
+  "resource": {
+    "binary_version": null,
+    "configured": {
+      "memory": true,
+      "temp_limit": true
+    },
+    "default_kind": null,
+    "flag_vs_resolved_mismatch": [],
+    "flag_vs_resolved_mismatch_detail": [],
+    "flags": {
+      "memory": "256MiB",
+      "temp_limit": "32GiB"
+    },
+    "output_dest": "/acceptance/large258-fixed/work/output.bin",
+    "resolved": {
+      "memory_bytes": 268435456,
+      "memory_origin": "explicit",
+      "temp_limit_bytes": 34359738368,
+      "temp_limit_origin": "explicit"
+    },
+    "resolved_source": "compress_stderr_resources",
+    "temp_dir": "/acceptance/large258-fixed/temp",
+    "verification": "stderr_observed",
+    "verified": true
+  },
+  "resource_verified": true,
+  "self_timeout": null,
+  "state": "PASSED",
+  "steps": [
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "compress",
+        "--temp-dir",
+        "/acceptance/large258-fixed/temp",
+        "--memory",
+        "256MiB",
+        "--temp-limit",
+        "32GiB",
+        "/acceptance/large258-fixed/work/input.bin",
+        "/acceptance/large258-fixed/work/archive.srep"
+      ],
+      "duration_seconds": 1444.2474720478058,
+      "ended_unix": 1792243990.6911726,
+      "exit_code": 0,
+      "name": "compress",
+      "started_unix": 1792242546.4437006,
+      "stderr_path": "/acceptance/large258-fixed/logs/compress.stderr.log",
+      "stdout_path": "/acceptance/large258-fixed/logs/compress.stdout.log"
+    },
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "info",
+        "/acceptance/large258-fixed/work/archive.srep"
+      ],
+      "duration_seconds": 17.20413613319397,
+      "ended_unix": 1792244007.8963697,
+      "exit_code": 0,
+      "name": "info",
+      "started_unix": 1792243990.6922336,
+      "stderr_path": "/acceptance/large258-fixed/logs/info.stderr.log",
+      "stdout_path": "/acceptance/large258-fixed/logs/info.stdout.log"
+    },
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "test",
+        "/acceptance/large258-fixed/work/archive.srep"
+      ],
+      "duration_seconds": 14.85131573677063,
+      "ended_unix": 1792244022.7485328,
+      "exit_code": 0,
+      "name": "test",
+      "started_unix": 1792244007.897217,
+      "stderr_path": "/acceptance/large258-fixed/logs/test.stderr.log",
+      "stdout_path": "/acceptance/large258-fixed/logs/test.stdout.log"
+    },
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "decompress",
+        "--temp-dir",
+        "/acceptance/large258-fixed/temp",
+        "--memory",
+        "256MiB",
+        "--temp-limit",
+        "32GiB",
+        "/acceptance/large258-fixed/work/archive.srep",
+        "/acceptance/large258-fixed/work/output.bin"
+      ],
+      "duration_seconds": 14.804820537567139,
+      "ended_unix": 1792244037.5541663,
+      "exit_code": 0,
+      "name": "decompress",
+      "started_unix": 1792244022.7493458,
+      "stderr_path": "/acceptance/large258-fixed/logs/decompress.stderr.log",
+      "stdout_path": "/acceptance/large258-fixed/logs/decompress.stdout.log"
+    },
+    {
+      "argv": [
+        "cmp",
+        "/acceptance/large258-fixed/work/input.bin",
+        "/acceptance/large258-fixed/work/output.bin"
+      ],
+      "duration_seconds": 0.29009222984313965,
+      "ended_unix": 1792244038.123184,
+      "exit_code": 0,
+      "name": "cmp",
+      "started_unix": 1792244037.8330917
+    }
+  ],
+  "version_probe": null
+}

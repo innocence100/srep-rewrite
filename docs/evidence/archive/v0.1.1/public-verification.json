@@ -1,0 +1,53 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "asset_hashes": {
+    "SHA256SUMS": "5b895ba11910fec0c51a3343b4b3343d21eedb42030f36b5afc28c62c7e42eb3",
+    "release-provenance.json": "1acf2d9030f560b0070921f9b7a373daf8a78e67ad8ce22d9634ee4e511fa4b6",
+    "srep-v0.1.1-aarch64-apple-darwin.tar.gz": "588f12cfc25ede15ca41f95a0ffa63ea47365fa89ff1b63da0fb26c4d1dca4b6",
+    "srep-v0.1.1-x86_64-pc-windows-msvc.zip": "e04876e229740289bcafd3e0e2b2cd75c684a2dc2989d59951403cdd5f147447",
+    "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz": "bf2f5f6a11f1dfe11309f4158991330042335fa22e3f5fab3ca9ccaea77c125b"
+  },
+  "assets": [
+    {
+      "browser_download_url": "https://github.com/innocence100/srep-rewrite/releases/download/v0.1.1/release-provenance.json",
+      "digest": "sha256:1acf2d9030f560b0070921f9b7a373daf8a78e67ad8ce22d9634ee4e511fa4b6",
+      "id": 598224833,
+      "name": "release-provenance.json",
+      "size": 7694
+    },
+    {
+      "browser_download_url": "https://github.com/innocence100/srep-rewrite/releases/download/v0.1.1/SHA256SUMS",
+      "digest": "sha256:5b895ba11910fec0c51a3343b4b3343d21eedb42030f36b5afc28c62c7e42eb3",
+      "id": 598224832,
+      "name": "SHA256SUMS",
+      "size": 321
+    },
+    {
+      "browser_download_url": "https://github.com/innocence100/srep-rewrite/releases/download/v0.1.1/srep-v0.1.1-aarch64-apple-darwin.tar.gz",
+      "digest": "sha256:588f12cfc25ede15ca41f95a0ffa63ea47365fa89ff1b63da0fb26c4d1dca4b6",
+      "id": 598224834,
+      "name": "srep-v0.1.1-aarch64-apple-darwin.tar.gz",
+      "size": 548364
+    },
+    {
+      "browser_download_url": "https://github.com/innocence100/srep-rewrite/releases/download/v0.1.1/srep-v0.1.1-x86_64-pc-windows-msvc.zip",
+      "digest": "sha256:e04876e229740289bcafd3e0e2b2cd75c684a2dc2989d59951403cdd5f147447",
+      "id": 598224831,
+      "name": "srep-v0.1.1-x86_64-pc-windows-msvc.zip",
+      "size": 706990
+    },
+    {
+      "browser_download_url": "https://github.com/innocence100/srep-rewrite/releases/download/v0.1.1/srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz",
+      "digest": "sha256:bf2f5f6a11f1dfe11309f4158991330042335fa22e3f5fab3ca9ccaea77c125b",
+      "id": 598224827,
+      "name": "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz",
+      "size": 612478
+    }
+  ],
+  "body_sha256": "b29c976eecaceb5ecf365fc879a0fa8665bed4adac143b110aeabd8486397068",
+  "draft": false,
+  "prerelease": true,
+  "release_id": 399148285,
+  "result": "PASS",
+  "url": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.1.1"
+}

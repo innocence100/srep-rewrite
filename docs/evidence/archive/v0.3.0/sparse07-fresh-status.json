@@ -1,0 +1,76 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "archive_bytes": 3003,
+  "archive_sha256": "ab697abb85843423e917e58e582b27df32facc6878041585986cb8e28fec4c2a",
+  "binary": "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+  "binary_sha256_end": "eba65e05c7fa9222afcb5fb84034afc7f82b2be6f483c4ebc48e42e8abd82eba",
+  "binary_sha256_start": "eba65e05c7fa9222afcb5fb84034afc7f82b2be6f483c4ebc48e42e8abd82eba",
+  "current_stage": null,
+  "finished_utc": "2026-10-17T14:45:55Z",
+  "input_source_sha256": "0bdbc925b10ebdb128d72b651d56dbae7f539e16b6b2c24e87c837cebc0bc8df",
+  "output_bytes": 524288,
+  "output_sha256": "0bdbc925b10ebdb128d72b651d56dbae7f539e16b6b2c24e87c837cebc0bc8df",
+  "pid": "[redacted internal identifier]",
+  "started_utc": "2026-10-17T13:21:08Z",
+  "state": "PASSED",
+  "steps": [
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "compress",
+        "--method",
+        "m3",
+        "--layout",
+        "index",
+        "--checksum",
+        "xxh3",
+        "--block-size",
+        "8KiB",
+        "--min-match",
+        "512",
+        "--temp-dir",
+        "/acceptance/sparse07-fresh/temp",
+        "/acceptance/sparse07-fresh/work/input.bin",
+        "/acceptance/sparse07-fresh/work/archive.srep"
+      ],
+      "elapsed_seconds": 5087.05477809906,
+      "exit_code": 0,
+      "name": "compress"
+    },
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "info",
+        "/acceptance/sparse07-fresh/work/archive.srep"
+      ],
+      "elapsed_seconds": 0.017706871032714844,
+      "exit_code": 0,
+      "name": "info"
+    },
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "test",
+        "/acceptance/sparse07-fresh/work/archive.srep"
+      ],
+      "elapsed_seconds": 0.012684822082519531,
+      "exit_code": 0,
+      "name": "test"
+    },
+    {
+      "argv": [
+        "/acceptance/actual-package-030/srep-v0.3.0-x86_64-unknown-linux-gnu/srep",
+        "decompress",
+        "--temp-dir",
+        "/acceptance/sparse07-fresh/temp",
+        "/acceptance/sparse07-fresh/work/archive.srep",
+        "/acceptance/sparse07-fresh/work/output.bin"
+      ],
+      "elapsed_seconds": 0.02378559112548828,
+      "exit_code": 0,
+      "name": "decompress"
+    }
+  ],
+  "temp_dir_empty": true,
+  "temp_dir_entries": []
+}

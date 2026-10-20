@@ -1,0 +1,20 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "asset_hashes": {
+    "SHA256SUMS": "5b895ba11910fec0c51a3343b4b3343d21eedb42030f36b5afc28c62c7e42eb3",
+    "release-provenance.json": "1acf2d9030f560b0070921f9b7a373daf8a78e67ad8ce22d9634ee4e511fa4b6",
+    "srep-v0.1.1-aarch64-apple-darwin.tar.gz": "588f12cfc25ede15ca41f95a0ffa63ea47365fa89ff1b63da0fb26c4d1dca4b6",
+    "srep-v0.1.1-x86_64-pc-windows-msvc.zip": "e04876e229740289bcafd3e0e2b2cd75c684a2dc2989d59951403cdd5f147447",
+    "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz": "bf2f5f6a11f1dfe11309f4158991330042335fa22e3f5fab3ca9ccaea77c125b"
+  },
+  "main_unchanged": true,
+  "old_release_unchanged": true,
+  "original_preservation": "PASS",
+  "prerelease": true,
+  "published_at": "2026-09-29T12:57:56Z",
+  "release_id": 399148285,
+  "result": "COMPLETE",
+  "source_sha": "8b0e9056fad4e91e63b0cac169afb0ade322cf90",
+  "tag_object_sha": "bd728b1dc61c9669bd09ced5e4525e70149c2e33",
+  "url": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.1.1"
+}

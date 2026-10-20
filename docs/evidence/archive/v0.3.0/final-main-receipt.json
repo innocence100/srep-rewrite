@@ -1,0 +1,205 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "failures": [],
+  "limitations": [
+    "Windows GNU check/Clippy is compile-only; optional GNU linker test/build skipped.",
+    "Linux actual acceptance used fallback 256MiB / auto temp, not physical-total 50% runtime proof.",
+    "Budget selection is not RAM-utilization redesign, RSS cap, disk preallocation or runtime growth.",
+    "Incomplete Linux cgroups, RLIMIT_AS, Windows Job and macOS container limits remain detection limitations.",
+    "Linux GLIBC_2.34 floor; macOS ad-hoc signature/no publisher identity/not notarized.",
+    "Historical sparse improvements are development timing, not universal or fresh 0.3.0 speedups."
+  ],
+  "main": {
+    "actual_parent": "9d47cf9b910278aff0517771ccd728ca84c4b531",
+    "commit": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+    "diff_paths": [
+      "CHANGELOG.md",
+      "CONTRIBUTING.md",
+      "README.md",
+      "docs/evidence/v0.2.1-publication.md",
+      "docs/evidence/v0.3.0-publication.md",
+      "docs/releases/v0.2.1.md",
+      "docs/releases/v0.3.0.md"
+    ],
+    "previous_remote_tip": "e36599b6a20a8ddc77933ef7af327ceb873a08fc",
+    "production_tests_scripts_cargo_workflows_identical_to_release": true
+  },
+  "main_ci": {
+    "attempt": 1,
+    "conclusion": "success",
+    "event": "push",
+    "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+    "id": 39072690573,
+    "jobs": [
+      {
+        "completed_at": "2026-10-17T22:31:19Z",
+        "conclusion": "success",
+        "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "id": 117513386374,
+        "name": "verify",
+        "started_at": "2026-10-17T21:51:37Z"
+      },
+      {
+        "completed_at": "2026-10-17T22:43:08Z",
+        "conclusion": "success",
+        "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "id": 117513386518,
+        "name": "Native windows-latest Rust 1.88.0",
+        "started_at": "2026-10-17T21:51:37Z"
+      },
+      {
+        "completed_at": "2026-10-17T23:25:49Z",
+        "conclusion": "success",
+        "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "id": 117513386542,
+        "name": "Native macos-latest Rust 1.88.0",
+        "started_at": "2026-10-17T21:51:44Z"
+      },
+      {
+        "completed_at": "2026-10-17T22:22:25Z",
+        "conclusion": "success",
+        "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "id": 117513386575,
+        "name": "windows-test",
+        "started_at": "2026-10-17T21:51:37Z"
+      },
+      {
+        "completed_at": "2026-10-17T23:09:38Z",
+        "conclusion": "success",
+        "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "id": 117513386585,
+        "name": "Native macos-latest Rust stable",
+        "started_at": "2026-10-17T21:51:42Z"
+      },
+      {
+        "completed_at": "2026-10-17T22:26:46Z",
+        "conclusion": "success",
+        "head_sha": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "id": 117513386594,
+        "name": "Native ubuntu-latest Rust 1.88.0",
+        "started_at": "2026-10-17T21:51:38Z"
+      }
+    ],
+    "raw_full_logs_zip_sha256": "728500adb46a7734526ca30e38508b513c0954eea71819725d196380b2585f04",
+    "skipped_steps": [
+      {
+        "job": "windows-test",
+        "step": "Run cargo test --target x86_64-pc-windows-gnu --all-targets --all-features"
+      },
+      {
+        "job": "windows-test",
+        "step": "Run cargo build --target x86_64-pc-windows-gnu --release"
+      }
+    ],
+    "status": "completed",
+    "top_level_job_logs": [
+      "0_windows-test.txt",
+      "1_Native macos-latest Rust stable.txt",
+      "2_Native ubuntu-latest Rust 1.88.0.txt",
+      "3_Native macos-latest Rust 1.88.0.txt",
+      "4_Native windows-latest Rust 1.88.0.txt",
+      "5_verify.txt"
+    ],
+    "url": "https://github.com/innocence100/srep-rewrite/actions/runs/39072690573"
+  },
+  "model_routing": "archived verification [internal model/reviewer/session routing redacted]; the original reports separate independent review PASS, not self-authored approval",
+  "preservation": {
+    "dirty_tree_all_captured_file_hashes_and_status_unchanged_during_this_verification": true,
+    "earlier_dirty_bytes_baseline_limitation": "No earlier per-file baseline supplied; only expected HEAD/stash/tracked count and this session start/end byte hashes were independently checked.",
+    "frozen_bundle_unchanged": true,
+    "state_evidence_sha256": "8d5467c55a953d0690e386d660a4a680c198615b5f9dd0ff7401edde4431d0d8",
+    "trees": [
+      {
+        "head": "b41e784cce01288334ceb3ee45d764f15c95fb86",
+        "mode": "dirty",
+        "path": "<workspace>/original-checkout",
+        "tracked_status_entries": 35
+      },
+      {
+        "head": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+        "mode": "tracked-clean",
+        "path": "<workspace>/v0.2.0",
+        "tracked_status_entries": 0
+      },
+      {
+        "head": "1777d4728113e997af32f2d7a9c553de3b0b06a9",
+        "mode": "tracked-clean",
+        "path": "<workspace>/post-v0.2.0",
+        "tracked_status_entries": 0
+      },
+      {
+        "head": "6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed",
+        "mode": "clean",
+        "path": "<workspace>/v0.2.1-release",
+        "tracked_status_entries": 0
+      },
+      {
+        "head": "9d47cf9b910278aff0517771ccd728ca84c4b531",
+        "mode": "clean",
+        "path": "<workspace>/v0.3.0-release",
+        "tracked_status_entries": 0
+      },
+      {
+        "head": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+        "mode": "clean",
+        "path": "<workspace>/v0.3.0-publication",
+        "tracked_status_entries": 0
+      }
+    ]
+  },
+  "prior_candidate_gates": {
+    "ci_jobs": 6,
+    "ci_result": "success",
+    "ci_run": 39034446833,
+    "full72": "72 rows / 360 stages PASS; 65 wins / 0 ties / 7 losses; all final-XZ hashes/metrics match published 0.2.1; explicit 256MiB/32GiB",
+    "full72_report_sha256": "7ac02bf1ee97e079ea32d3f81260034645587c61af14ce70553c28536e7b53be",
+    "native_jobs": 6,
+    "native_result": "success",
+    "native_run": 39034446863,
+    "source": "9d47cf9b910278aff0517771ccd728ca84c4b531"
+  },
+  "publication": {
+    "fresh_download_note": "No new downloads required: live asset identities matched approved postpublication receipts; the earlier receipt verified all 18 fresh downloads.",
+    "historical010_011_020_unchanged": true,
+    "latest": {
+      "id": 416081575,
+      "tag": "v0.3.0"
+    },
+    "postpublication_receipt_sha256": "bf81cffe074f9428375afee315dff0aaea4217358fa378d96f727e0dc1a39544",
+    "promotion021_observation": {
+      "assets_unchanged": true,
+      "completed": "2026-10-17T21:42:19.123Z",
+      "id": 414169555,
+      "operation": "021-metadata-only-official-promotion",
+      "payload_sha256": "00cb6c3891a87e2ba99965cf921bc754c763e7cb79c3d9b17fdb294be7c7f606",
+      "prerelease": false,
+      "started": "2026-10-17T21:42:18.241Z",
+      "url": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1"
+    },
+    "releases": {
+      "021": {
+        "annotated_tag": "c11c8ce3f3f550521f9b3e952481a75c92a5d0fb",
+        "assets_unchanged": true,
+        "body_sha256": "640c86110e3333c1f99daff7dbc75d6d11f3b755a02547c6b836ae38fda24801",
+        "commit": "6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed",
+        "draft": false,
+        "id": 414169555,
+        "prerelease": false,
+        "published_at": "2026-10-15T19:03:54Z"
+      },
+      "030": {
+        "annotated_tag": "0db31748c3391ebd4c74b614e0234dad2fa285ed",
+        "assets_unchanged": true,
+        "body_sha256": "0ecc47e22e48821644a5ec65f8958e25daa15282e30d9c91153e0035fb94424b",
+        "commit": "9d47cf9b910278aff0517771ccd728ca84c4b531",
+        "draft": false,
+        "id": 416081575,
+        "prerelease": false,
+        "published_at": "2026-10-17T21:43:32Z"
+      }
+    }
+  },
+  "result": "PASS",
+  "scope": "Final read-only operational verification; no remote writes, dispatch, rerun, commit or push performed.",
+  "verified_at_utc": "2026-10-17T23:31:46.610940+00:00"
+}

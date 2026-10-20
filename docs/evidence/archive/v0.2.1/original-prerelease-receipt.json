@@ -1,0 +1,173 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "archive_validation": {
+    "srep-v0.2.1-aarch64-apple-darwin.tar.gz": {
+      "archive_sha256": "950db30a3254d96f1449c5306ee4522fb1e63b474656b328a1abe4e8f5bc5fba",
+      "binary_sha256": "9a9160eabaef7ee91978691df90888834ece39d38908c6b7fe11e7219e1c00b9",
+      "build_provenance_matches": true,
+      "root_member_count": 9,
+      "target": "aarch64-apple-darwin"
+    },
+    "srep-v0.2.1-x86_64-pc-windows-msvc.zip": {
+      "archive_sha256": "94382e62ad12ccf5c08722d4f7ab1a37302a0d94db523bc21538f034e37fac81",
+      "binary_sha256": "4fbe10bcf6bb8b648e258028002acd508bb29f072199ebfc297ef5dcf93a79d2",
+      "build_provenance_matches": true,
+      "root_member_count": 9,
+      "target": "x86_64-pc-windows-msvc"
+    },
+    "srep-v0.2.1-x86_64-unknown-linux-gnu.tar.gz": {
+      "archive_sha256": "3b15f00ec42010fc3a73b4c252dd789e0316baac5e3eeabe407b783f847e2131",
+      "binary_sha256": "8350d23f7f7c13af96cd1deb156ff6e10554bcbd993726c12c0e549a2b942b0e",
+      "build_provenance_matches": true,
+      "root_member_count": 9,
+      "target": "x86_64-unknown-linux-gnu"
+    }
+  },
+  "assets": {
+    "all_state_uploaded": true,
+    "api_count": 9,
+    "assets": {
+      "SHA256SUMS": {
+        "api_digest": "sha256:8496877c503787858505babb7fb7cc55d3fb3b9e777d629a47a0e113b34a3d93",
+        "asset_id": 644866143,
+        "bundle_sha256": "8496877c503787858505babb7fb7cc55d3fb3b9e777d629a47a0e113b34a3d93",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "8496877c503787858505babb7fb7cc55d3fb3b9e777d629a47a0e113b34a3d93",
+        "size": 795,
+        "uploaded": true
+      },
+      "fidelity-report-release.json": {
+        "api_digest": "sha256:85e29e010cadb97e530b95dfc78fcabcda4186b231b15d93f7e787648988ad28",
+        "asset_id": 644866091,
+        "bundle_sha256": "85e29e010cadb97e530b95dfc78fcabcda4186b231b15d93f7e787648988ad28",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "85e29e010cadb97e530b95dfc78fcabcda4186b231b15d93f7e787648988ad28",
+        "size": 396137,
+        "uploaded": true
+      },
+      "large-report-release.json": {
+        "api_digest": "sha256:161c6db3b6398950f2cbccf8788897682d48e10db421a6b9f73d6961cd3c18f6",
+        "asset_id": 644866099,
+        "bundle_sha256": "161c6db3b6398950f2cbccf8788897682d48e10db421a6b9f73d6961cd3c18f6",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "161c6db3b6398950f2cbccf8788897682d48e10db421a6b9f73d6961cd3c18f6",
+        "size": 5547,
+        "uploaded": true
+      },
+      "release-provenance.json": {
+        "api_digest": "sha256:b543873e693a585ca2ee5a8ae0e6430bd35e7ba54bb4b3868e07c324fc9472b0",
+        "asset_id": 644866132,
+        "bundle_sha256": "b543873e693a585ca2ee5a8ae0e6430bd35e7ba54bb4b3868e07c324fc9472b0",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "b543873e693a585ca2ee5a8ae0e6430bd35e7ba54bb4b3868e07c324fc9472b0",
+        "size": 12691,
+        "uploaded": true
+      },
+      "resource-summary-release.json": {
+        "api_digest": "sha256:9cdee4673df158aad75ea3f3d444481c49d986c7ef8c4b50969f45ceab02e60a",
+        "asset_id": 644866127,
+        "bundle_sha256": "9cdee4673df158aad75ea3f3d444481c49d986c7ef8c4b50969f45ceab02e60a",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "9cdee4673df158aad75ea3f3d444481c49d986c7ef8c4b50969f45ceab02e60a",
+        "size": 2847,
+        "uploaded": true
+      },
+      "sparse-optimization-inherited.json": {
+        "api_digest": "sha256:2de4e10935225eed4304331f5af2eec9e3c3cfe0aee063228345eca5fad39b50",
+        "asset_id": 644866133,
+        "bundle_sha256": "2de4e10935225eed4304331f5af2eec9e3c3cfe0aee063228345eca5fad39b50",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "2de4e10935225eed4304331f5af2eec9e3c3cfe0aee063228345eca5fad39b50",
+        "size": 26885,
+        "uploaded": true
+      },
+      "srep-v0.2.1-aarch64-apple-darwin.tar.gz": {
+        "api_digest": "sha256:950db30a3254d96f1449c5306ee4522fb1e63b474656b328a1abe4e8f5bc5fba",
+        "asset_id": 644866096,
+        "bundle_sha256": "950db30a3254d96f1449c5306ee4522fb1e63b474656b328a1abe4e8f5bc5fba",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "950db30a3254d96f1449c5306ee4522fb1e63b474656b328a1abe4e8f5bc5fba",
+        "size": 691628,
+        "uploaded": true
+      },
+      "srep-v0.2.1-x86_64-pc-windows-msvc.zip": {
+        "api_digest": "sha256:94382e62ad12ccf5c08722d4f7ab1a37302a0d94db523bc21538f034e37fac81",
+        "asset_id": 644866094,
+        "bundle_sha256": "94382e62ad12ccf5c08722d4f7ab1a37302a0d94db523bc21538f034e37fac81",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "94382e62ad12ccf5c08722d4f7ab1a37302a0d94db523bc21538f034e37fac81",
+        "size": 961470,
+        "uploaded": true
+      },
+      "srep-v0.2.1-x86_64-unknown-linux-gnu.tar.gz": {
+        "api_digest": "sha256:3b15f00ec42010fc3a73b4c252dd789e0316baac5e3eeabe407b783f847e2131",
+        "asset_id": 644866098,
+        "bundle_sha256": "3b15f00ec42010fc3a73b4c252dd789e0316baac5e3eeabe407b783f847e2131",
+        "download_matches_reviewed_bundle": true,
+        "downloaded_sha256": "3b15f00ec42010fc3a73b4c252dd789e0316baac5e3eeabe407b783f847e2131",
+        "size": 763502,
+        "uploaded": true
+      }
+    },
+    "download_count": 9,
+    "exact_set_matches_reviewed_bundle": true,
+    "expected_count": 9
+  },
+  "generated_by": "archived verification [original internal attribution redacted]",
+  "old_release_preservation": {
+    "v0.1.0": {
+      "all_uploaded": true,
+      "asset_count": 2,
+      "id": 394791284,
+      "unchanged_reference_verified": true
+    },
+    "v0.1.1": {
+      "all_uploaded": true,
+      "asset_count": 5,
+      "id": 399148285,
+      "unchanged_reference_verified": true
+    },
+    "v0.2.0": {
+      "all_uploaded": true,
+      "asset_count": 10,
+      "id": 408532238,
+      "unchanged_reference_verified": true
+    }
+  },
+  "overall": "PASS",
+  "postpublication_download_count": 9,
+  "postpublication_download_dir": "<evidence>/v0.2.1/publication/downloads",
+  "release": {
+    "body_byte_equal_to_reviewed_draft": true,
+    "body_sha256_observed": "1bc0d469bf29b86a292b0ad5a73d08e86cba9352510176a2fd95cd0e7de5201f",
+    "body_sha256_reviewed": "1bc0d469bf29b86a292b0ad5a73d08e86cba9352510176a2fd95cd0e7de5201f",
+    "draft": false,
+    "id": 414169555,
+    "name": "SREP-NG v0.2.1 — exact sparse optimization preview",
+    "prerelease": true,
+    "published_at": "2026-10-15T19:03:54Z",
+    "repository": "innocence100/srep-rewrite",
+    "tag": "v0.2.1",
+    "target_commitish": "6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed",
+    "url": "https://github.com/innocence100/srep-rewrite/releases/tag/v0.2.1"
+  },
+  "schema": "srep-postpublication-receipt/v1",
+  "sha256sums": {
+    "all_eight_entries_pass": true,
+    "entries": 8,
+    "exact_content_matches_reviewed_bundle": true,
+    "self_entry_absent": true,
+    "self_sha256": "8496877c503787858505babb7fb7cc55d3fb3b9e777d629a47a0e113b34a3d93"
+  },
+  "tag": {
+    "annotated_tag_object_sha": "c11c8ce3f3f550521f9b3e952481a75c92a5d0fb",
+    "expected_annotated_tag_object_sha": "c11c8ce3f3f550521f9b3e952481a75c92a5d0fb",
+    "expected_peeled_commit_sha": "6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed",
+    "peeled_commit_sha": "6f1357fc0ebf1e35d89eceef358bcb2e6bd098ed",
+    "ref": "refs/tags/v0.2.1",
+    "verified": true
+  },
+  "task": "archived verification [original internal attribution redacted]",
+  "verification_scope": "READ-ONLY: fresh download and verification of parent-published GitHub release. No repository, Git, tag, release, asset, or publication writes.",
+  "verification_time_utc": "2026-10-15T19:05:53Z"
+}

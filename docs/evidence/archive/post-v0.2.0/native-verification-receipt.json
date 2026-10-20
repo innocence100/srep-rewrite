@@ -1,0 +1,346 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "evidence_paths": {
+    "ci_artifact_api_json": "38510825006-artifacts.json",
+    "ci_jobs_json": "38510825006-jobs.json",
+    "ci_logs_zip": "38510825006-logs.zip (extracted under 38510825006-logs/)",
+    "ci_run_json": "38510825006-run.json",
+    "live_release_and_ref_json": "v0.1.0-release.json, v0.1.0-ref.json, v0.1.1-release.json, v0.1.1-ref.json, v0.2.0-release.json, v0.2.0-ref.json, main-ref.json",
+    "native_artifact_api_json": "38510825260-artifacts.json",
+    "native_downloaded_extracted_artifacts": "download-clean/",
+    "native_jobs_json": "38510825260-jobs.json",
+    "native_logs_zip": "38510825260-logs.zip",
+    "native_run_json": "38510825260-run.json"
+  },
+  "live_publication_preservation": {
+    "main_head": "f77e1068085446687b2dc30c6ebec004c9a098f1 (unchanged from supplied baseline)",
+    "v0.1.0": {
+      "asset_count": 2,
+      "assets": {
+        "SHA256SUMS": "sha256:6fc08c5db7e853dcab7f3a6647e33efbc3cf9d87c92c33da53d4688e2524b0d4",
+        "srep-v0.1.0-x86_64-unknown-linux-gnu.tar.gz": "sha256:039db897613e6f74e2c5469fb6de7c1971029d2f14c6aa25637ae51523051401"
+      },
+      "release_id": 394791284,
+      "tag_object": "39dfcb079ddb2b9dc7b4f21ce00a8f75a7f4514d"
+    },
+    "v0.1.1": {
+      "asset_count": 5,
+      "assets": {
+        "SHA256SUMS": "sha256:5b895ba11910fec0c51a3343b4b3343d21eedb42030f36b5afc28c62c7e42eb3",
+        "release-provenance.json": "sha256:1acf2d9030f560b0070921f9b7a373daf8a78e67ad8ce22d9634ee4e511fa4b6",
+        "srep-v0.1.1-aarch64-apple-darwin.tar.gz": "sha256:588f12cfc25ede15ca41f95a0ffa63ea47365fa89ff1b63da0fb26c4d1dca4b6",
+        "srep-v0.1.1-x86_64-pc-windows-msvc.zip": "sha256:e04876e229740289bcafd3e0e2b2cd75c684a2dc2989d59951403cdd5f147447",
+        "srep-v0.1.1-x86_64-unknown-linux-gnu.tar.gz": "sha256:bf2f5f6a11f1dfe11309f4158991330042335fa22e3f5fab3ca9ccaea77c125b"
+      },
+      "release_id": 399148285,
+      "tag_object": "bd728b1dc61c9669bd09ced5e4525e70149c2e33"
+    },
+    "v0.2.0": {
+      "asset_count": 10,
+      "assets_unchanged_vs_prior_receipt": true,
+      "release_id": 408532238,
+      "tag_object": "eb4d54deee5db1c0a1335f880a6b16aeaceead99"
+    }
+  },
+  "native_package_checks": {
+    "archive_contents": "Each extracted archive has nine members: platform binary (srep or srep.exe), BUILD-PROVENANCE.json, CHANGELOG.md, LICENSE, NOTICES, PLATFORM-README.md, README.md, THIRD_PARTY.audit, THIRD_PARTY.md. Windows executable name is correctly srep.exe. Member verification used platform-specific binary naming.",
+    "checksums": "Each package SHA256SUMS matches the package archive digest above; API artifact digests identify the uploaded artifact containers and are recorded separately.",
+    "smoke_evidence": "Three native smoke.json records all report version srep 0.2.0, two successful round trips each, ten successful CLI steps each (all exit code 0): version/help, empty-file compress/info/test/decompress, and multiblock compress/info/test/decompress. Input/restored hashes match both cases. Windows/macOS binaries were not executed locally.",
+    "source_tooling_provenance": "All three embedded BUILD-PROVENANCE.json records bind source_sha and tooling_sha to 4af679fd4292c3f864db1eb717e48f504e58e78a, both worktrees clean, version 0.2.0; host/toolchain/target fields align with native runner. Rust 1.88.0 package jobs are Ubuntu x86_64 Linux, Windows x86_64 MSVC, and macOS aarch64 Darwin.",
+    "timing": "Native release optimized tests and their timing assertions passed for all six platform/toolchain jobs. Stable-only packaging/upload steps are skipped by design; required jobs succeeded."
+  },
+  "native_release_run": {
+    "all_target_test_profiles": [
+      {
+        "elapsed_seconds_sum": 283.33,
+        "failed": 0,
+        "ignored": 2,
+        "job_id": 115678691489,
+        "passed": 498,
+        "profile": "Rust 1.88.0 Linux",
+        "targets": 26
+      },
+      {
+        "elapsed_seconds_sum": 411.53,
+        "failed": 0,
+        "ignored": 2,
+        "job_id": 115678691528,
+        "passed": 499,
+        "profile": "Rust 1.88.0 macOS ARM64",
+        "targets": 26
+      },
+      {
+        "elapsed_seconds_sum": 425.13,
+        "failed": 0,
+        "ignored": 2,
+        "job_id": 115678691531,
+        "passed": 493,
+        "profile": "Rust 1.88.0 Windows MSVC",
+        "targets": 26
+      },
+      {
+        "elapsed_seconds_sum": 256.74,
+        "failed": 0,
+        "ignored": 2,
+        "job_id": 115678691545,
+        "passed": 498,
+        "profile": "stable Linux",
+        "targets": 26
+      },
+      {
+        "elapsed_seconds_sum": 394.38,
+        "failed": 0,
+        "ignored": 2,
+        "job_id": 115678691582,
+        "passed": 499,
+        "profile": "stable macOS ARM64",
+        "targets": 26
+      },
+      {
+        "elapsed_seconds_sum": 489.51,
+        "failed": 0,
+        "ignored": 2,
+        "job_id": 115678691408,
+        "passed": 493,
+        "profile": "stable Windows MSVC",
+        "targets": 26
+      }
+    ],
+    "artifacts": [
+      {
+        "api_digest": "sha256:ca317450178273ee9751e00aad55823806fe433c08b0e3ed6e2ba44471b8b91d",
+        "api_size_bytes": 687383,
+        "id": 11870440552,
+        "name": "srep-v0.2.0-aarch64-apple-darwin",
+        "package_file": "srep-v0.2.0-aarch64-apple-darwin.tar.gz",
+        "package_sha256": "c4be77872efc738ff9ba770b02988ae4292090435edef08802ed512729d3d313",
+        "package_size_bytes": 690749
+      },
+      {
+        "api_digest": "sha256:ac15be27705212d0cc41a19d852c3335f7237132c88006514cbfb4fc408dfaa9",
+        "api_size_bytes": 953939,
+        "id": 11870241648,
+        "name": "srep-v0.2.0-x86_64-pc-windows-msvc",
+        "package_file": "srep-v0.2.0-x86_64-pc-windows-msvc.zip",
+        "package_sha256": "23c6f02917e27e132fefa10d14d8fdd6cde5815e7c17a4a714b576e43b8e4140",
+        "package_size_bytes": 960544
+      },
+      {
+        "api_digest": "sha256:5ef7deee044ca9454798070461d9a5275e54270c34105b14ebe699228056423e",
+        "api_size_bytes": 759154,
+        "id": 11869843570,
+        "name": "srep-v0.2.0-x86_64-unknown-linux-gnu",
+        "package_file": "srep-v0.2.0-x86_64-unknown-linux-gnu.tar.gz",
+        "package_sha256": "a3f59c4b8916af61d1b3c35d706e72194a0303bb00c3a9bd002de5615dd798ae",
+        "package_size_bytes": 762507
+      }
+    ],
+    "conclusion": "success",
+    "event": "workflow_dispatch",
+    "head_sha": "4af679fd4292c3f864db1eb717e48f504e58e78a",
+    "id": 38510825260,
+    "ignored_tests": [
+      {
+        "name": "offload::generation_tests::profile_sample03_m3_intervals_only",
+        "reason": "manual sample03 enumeration-volume diagnostic; not an archive or validation bypass"
+      },
+      {
+        "name": "stage8::ignored_m1_finder_discovers_a_match_across_256_mib_history",
+        "reason": "manual m1 finder acceptance over generated input larger than 256 MiB"
+      }
+    ],
+    "jobs": [
+      {
+        "completed_at": "2026-10-14T04:32:15Z",
+        "conclusion": "success",
+        "id": 115678691408,
+        "name": "windows-latest / Rust stable / x86_64-pc-windows-msvc",
+        "optimized_native_tests": "success",
+        "started_at": "2026-10-14T04:19:53Z",
+        "status": "completed"
+      },
+      {
+        "completed_at": "2026-10-14T04:26:13Z",
+        "conclusion": "success",
+        "id": 115678691489,
+        "name": "ubuntu-latest / Rust 1.88.0 / x86_64-unknown-linux-gnu",
+        "optimized_native_tests": "success",
+        "started_at": "2026-10-14T04:19:54Z",
+        "status": "completed"
+      },
+      {
+        "completed_at": "2026-10-14T04:29:05Z",
+        "conclusion": "success",
+        "id": 115678691528,
+        "name": "macos-latest / Rust 1.88.0 / aarch64-apple-darwin",
+        "optimized_native_tests": "success",
+        "started_at": "2026-10-14T04:19:59Z",
+        "status": "completed"
+      },
+      {
+        "completed_at": "2026-10-14T04:29:54Z",
+        "conclusion": "success",
+        "id": 115678691531,
+        "name": "windows-latest / Rust 1.88.0 / x86_64-pc-windows-msvc",
+        "optimized_native_tests": "success",
+        "started_at": "2026-10-14T04:19:54Z",
+        "status": "completed"
+      },
+      {
+        "completed_at": "2026-10-14T04:25:32Z",
+        "conclusion": "success",
+        "id": 115678691545,
+        "name": "ubuntu-latest / Rust stable / x86_64-unknown-linux-gnu",
+        "optimized_native_tests": "success",
+        "started_at": "2026-10-14T04:19:54Z",
+        "status": "completed"
+      },
+      {
+        "completed_at": "2026-10-14T04:28:37Z",
+        "conclusion": "success",
+        "id": 115678691582,
+        "name": "macos-latest / Rust stable / aarch64-apple-darwin",
+        "optimized_native_tests": "success",
+        "started_at": "2026-10-14T04:20:00Z",
+        "status": "completed"
+      }
+    ],
+    "per_job_gates": "All six jobs succeeded, including native-host verification, v0.2.0 manifest verification, source checks, optimized tests with timing assertions, portable packager tests, native archive/extract smoke, and evidence uploads on the three Rust 1.88.0 jobs. Stable jobs completed their defined checks; packaging/upload steps were skipped by workflow design on stable jobs. No required job skipped or failed.",
+    "status": "completed",
+    "url": "https://github.com/innocence100/srep-rewrite/actions/runs/38510825260",
+    "workflow": ".github/workflows/native-release.yml"
+  },
+  "push_ci_run": {
+    "artifacts": "Run API returned zero artifacts, as expected for this CI workflow; logs downloaded and retained.",
+    "conclusion": "success",
+    "event": "push",
+    "head_sha": "4af679fd4292c3f864db1eb717e48f504e58e78a",
+    "id": 38510825006,
+    "jobs": [
+      {
+        "conclusion": "success",
+        "id": 115678686372,
+        "name": "windows-test"
+      },
+      {
+        "conclusion": "success",
+        "id": 115678686452,
+        "name": "verify"
+      },
+      {
+        "conclusion": "success",
+        "id": 115678686486,
+        "name": "Native macos-latest Rust stable",
+        "test_elapsed_seconds": 3500.47
+      },
+      {
+        "conclusion": "success",
+        "id": 115678686639,
+        "name": "Native ubuntu-latest Rust 1.88.0",
+        "test_elapsed_seconds": 1036.79
+      },
+      {
+        "conclusion": "success",
+        "id": 115678686688,
+        "name": "Native macos-latest Rust 1.88.0",
+        "test_elapsed_seconds": 3463.15
+      },
+      {
+        "conclusion": "success",
+        "id": 115678686725,
+        "name": "Native windows-latest Rust 1.88.0",
+        "test_elapsed_seconds": 934.16
+      }
+    ],
+    "status": "completed",
+    "test_evidence": {
+      "aggregation": "The following values are sums of all 26 all-target cargo test summaries per profile, not the library target alone. Per-target distribution varies by host. Each all-target profile has 0 failures and two ignored tests: offload::generation_tests::profile_sample03_m3_intervals_only (manual sample03 enumeration-volume diagnostic) and stage8::ignored_m1_finder_discovers_a_match_across_256_mib_history (manual >256-MiB m1 finder acceptance). The Rust doc-test profile is listed separately.",
+      "profiles": [
+        {
+          "elapsed_seconds": 2446.38,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686639,
+          "passed": 498,
+          "profile": "native MSRV Linux",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 5663.31,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686688,
+          "passed": 499,
+          "profile": "native MSRV macOS ARM64",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 1773.16,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686725,
+          "passed": 493,
+          "profile": "native MSRV Windows MSVC",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 5473.99,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686486,
+          "passed": 499,
+          "profile": "native stable macOS ARM64",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 2477.45,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686372,
+          "passed": 493,
+          "profile": "windows-test native Windows plus GNU-target checks",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 1169.48,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686452,
+          "passed": 498,
+          "profile": "verify debug",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 215.62,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686452,
+          "passed": 498,
+          "profile": "verify release",
+          "targets": 26
+        },
+        {
+          "elapsed_seconds": 0.0,
+          "failed": 0,
+          "ignored": 2,
+          "job_id": 115678686452,
+          "passed": 0,
+          "profile": "verify doc tests",
+          "targets": 1
+        }
+      ],
+      "result": "Each profile succeeded. Do not report the recurring 258 passed/1 ignored library target as the all-target total."
+    },
+    "url": "https://github.com/innocence100/srep-rewrite/actions/runs/38510825006",
+    "workflow": ".github/workflows/ci.yml"
+  },
+  "repository_write_status": "For [redacted internal task] the repository remained untouched. In the separate documentation closeout, only CHANGELOG.md, docs/evidence/post020-sparse-investigation.md, and docs/plans/post020-sparse-optimization.md were modified; no source, scripts, workflow, Cargo files, tag, release, assets, index, or commit were written.",
+  "scope": "Read-only GitHub Actions inspection; no repository implementation, push, dispatch, release, tag, or asset writes.",
+  "source": {
+    "branch": "ci/post020-sparse",
+    "manifest_tag_peel_baseline": "6ce0a32b83c625519a427c0d3365e0abfee22d7e",
+    "sha": "4af679fd4292c3f864db1eb717e48f504e58e78a",
+    "version": "0.2.0"
+  },
+  "task": "archived verification [original internal attribution redacted]"
+}

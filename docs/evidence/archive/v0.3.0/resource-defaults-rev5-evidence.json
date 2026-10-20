@@ -1,0 +1,288 @@
+{
+  "_archive_notice": "Sanitized historical derivative; not a new verification or current status. See ../README.md and ../manifest.json for provenance and redactions. Embedded hashes identify original evidence/assets, not this derivative. Paths and commands are historical references, not replay-ready instructions.",
+  "assignment": "[redacted internal task] design/research (no production code, no git changes, no agents, no 0.3 execution until 0.2.1 base published)",
+  "collector_fixtures": [
+    "visible root finite (2 GiB), process at root -> known_min=2GiB, indeterminate=false",
+    "visible root max, all levels readable max -> known_min=None, indeterminate=false -> physical/2",
+    "missing root file -> indeterminate=true -> fallback",
+    "namespace self /foo with a missing expected level -> indeterminate=true -> fallback",
+    "missing child + finite ancestor 3GiB -> known_min=3GiB, indeterminate=true retained",
+    "visible level finite + another missing -> indeterminate; min(256MiB, known/2, physical/2)",
+    "finite v1 + uncertain/missing v2 -> indeterminate=true",
+    "v1 sentinel + v2 absent -> known_min=None, not indeterminate -> physical/2",
+    "traversal/symlink-escape/oversized/escaped-mount -> indeterminate",
+    "meminfo present/missing/non-numeric/zero -> Known/Unavailable/Unavailable/Invalid"
+  ],
+  "dependency": {
+    "already_present": [
+      "errno 0.3.14",
+      "libc 0.2.189",
+      "windows-sys 0.61.2"
+    ],
+    "attribution_needs_reported": [
+      "Cargo.lock refresh",
+      "THIRD_PARTY.audit + THIRD_PARTY.md rows from cargo metadata --locked",
+      "run audit-lock-licenses.sh and test-license-audit.sh",
+      "packaging notice tests pass"
+    ],
+    "edition": "2024",
+    "internal_unsafe": true,
+    "license": "MIT",
+    "msrv_statement": "edition 2024 requires rustc >= 1.85 (minimum); 1.88.0 compatibility is unproven until a real 1.88.0 CI compile",
+    "new_lock_packages": [
+      "system-memory 0.2.1",
+      "mach2 0.6.0",
+      "rustc_version 0.4.1",
+      "semver 1.0.27"
+    ],
+    "pinned_source_links": [
+      "https://docs.rs/system-memory/0.2.1/system_memory/",
+      "https://docs.rs/crate/system-memory/0.2.1/source/src/lib.rs",
+      "https://docs.rs/crate/system-memory/0.2.1/source/src/macos.rs",
+      "https://crates.io/api/v1/crates/system-memory/0.2.1/dependencies"
+    ],
+    "recommended": "system-memory = \"=0.2.1\" under [target.'cfg(any(target_os = \"windows\", target_os = \"macos\"))'.dependencies]",
+    "rejected": [
+      "sysinfo 0.39.6 (rust_version 1.95 > MSRV)",
+      "sys-info 0.9.1 (unmaintained, C, unsafe)",
+      "external commands"
+    ],
+    "safe_api": "Snapshot::get() -> Result<Snapshot, Option<errno::Errno>>; macos::try_get_total_physical_memory() -> Result<u64, Errno>; total()/available()/used() panic and are unused; no top-level total-only non-panicking API"
+  },
+  "design_table": [
+    {
+      "decision": "physical probe Known(>0)|Invalid|Unavailable; physical 0 never a base",
+      "id": "R1"
+    },
+    {
+      "decision": "hard probe {identified, known_min, indeterminate}; finite cgroup 0 valid; max/sentinel = no limit at that visible level; absent = no level",
+      "id": "R2"
+    },
+    {
+      "decision": "v1 and v2 finite visible constraints aggregated by independent minimum; finite v1 never clears uncertain v2/child",
+      "id": "R3"
+    },
+    {
+      "decision": "identified && known_min==None && !indeterminate = all examined visible levels readable and max -> physical/2 (bounded by visible caps); no hidden-ancestor/global promise; never a finite h",
+      "id": "R4"
+    },
+    {
+      "decision": "indeterminate=true when any expected visible level is missing/unreadable/malformed; retained even if a finite ancestor is known",
+      "id": "R5"
+    },
+    {
+      "decision": "indeterminate -> min(256MiB, known_min/2 if any, physical/2 if Known) + warning; never host physical/2",
+      "id": "R6"
+    },
+    {
+      "decision": "physical failure with known finite hard -> min(256MiB, hard/2) + warning",
+      "id": "R7"
+    },
+    {
+      "decision": "result 0 -> CompressionConfig::validate() -> SREP_E_INVALID_CONFIG, no panic",
+      "id": "R8"
+    },
+    {
+      "decision": "temp known len*10 overflow -> InvalidConfig naming --temp-limit before any staging; no 32 GiB substitution",
+      "id": "R9"
+    },
+    {
+      "decision": "temp unknown (stdin/FIFO/special) fixed 32 GiB; stdin never fstat'd even when redirected from a regular file",
+      "id": "R10"
+    },
+    {
+      "decision": "explicit --temp-limit bypasses multiplication/stat policy (open errors still surface); explicit --memory bypasses detection; warnings per-resource",
+      "id": "R11"
+    },
+    {
+      "decision": "same opened handle fstat'd for size and read",
+      "id": "R12"
+    },
+    {
+      "decision": "no free-disk startup reject; managed temp ledger and real write errors preserved",
+      "id": "R13"
+    },
+    {
+      "decision": "no root-visibility heuristic; missing expected file -> indeterminate -> conservative fallback always; root detection not solved",
+      "id": "R14"
+    },
+    {
+      "decision": "resources line on stderr when !quiet with per-field origin; fallback warnings always under --quiet",
+      "id": "R15"
+    },
+    {
+      "decision": "warning_for(failure, resolved_bytes); that resource origin is fallback",
+      "id": "R16"
+    },
+    {
+      "decision": "RLIMIT_AS unsupported; no termination/allocation-failure/whole-RSS promise; Windows/mac job limits unsupported disclosed",
+      "id": "R17"
+    },
+    {
+      "decision": "library ResourceConfig::default() unchanged; harnesses must not misreport CLI auto values as fixed defaults",
+      "id": "R18"
+    },
+    {
+      "decision": "orchestration helper owns only resolve->apply->validate->diagnostics; transaction closure owns reader/sink/force and runs existing temporary_output + finish_temporary_transaction; compress_into borrows &mut sink; no StagingFactory trait; no atomic-publish redesign",
+      "id": "R19"
+    }
+  ],
+  "diagnostics": {
+    "per_resource": "explicit --temp-limit does not suppress an automatic memory fallback warning; explicit --memory emits no memory warning even when temp is auto",
+    "quiet": "--quiet suppresses resources line and existing informational lines, not warnings",
+    "stdout": "archive bytes never affected",
+    "success_line": "srep: resources: memory=<bytes> (<origin>) temp_limit=<bytes> (<origin>) on stderr when !quiet; origin in {auto, explicit, fallback}",
+    "warnings": [
+      "automatic memory detection failed (physical memory unavailable); using <bytes> B temporarily",
+      "automatic memory detection failed (invalid physical memory reading); using <bytes> B temporarily",
+      "container memory limit could not be determined; using <bytes> B temporarily"
+    ]
+  },
+  "generated_utc_date": "2026-10-15",
+  "hardprobe_definition": "{ identified: bool, known_min: Option<u64>, indeterminate: bool } -- no RootVisibility",
+  "limitations": [
+    "no global guarantee; hidden cgroup ancestors unobservable; all-visible-max carries no hidden-ancestor promise",
+    "missing/unreadable expected level (including unproven legitimate global-root absence) forces conservative fallback; ordinary hosts may fall back",
+    "Windows job / macOS container limits unsupported",
+    "RLIMIT_AS unsupported; no termination/allocation-failure/whole-RSS promise",
+    "indeterminate -> 256MiB may under-utilise",
+    "len*10 overflow fails by design",
+    "system-memory single-maintainer risk; pinned and isolated",
+    "literal mkfifo classification may need a test-only dependency",
+    "32-bit targets u64 limits, no preallocation; primary targets 64-bit"
+  ],
+  "no_new_requirements": "This design adds no new quality gate, requirement manifest entry, or test build; it only specifies implementation contracts. No production code or 0.3 execution until the 0.2.1 base is published.",
+  "open_facts": [
+    "exact license/repository via cargo metadata --locked",
+    "windows-sys feature adds a crate?",
+    "real 1.88.0 compile on linux/windows/macos",
+    "no Windows total-only non-panicking API in 0.2.1",
+    "v1 unlimited sentinel threshold; lock >=2^62 rule",
+    "target CI containers visible-level layout (may force conservative fallback)"
+  ],
+  "orchestration_contract": {
+    "borrowed_sink": "compress_into(input, config, sink: &mut W, context: &ResourceContext) borrows &mut (thin wrapper over compress_with_context); finish_temporary_transaction then owns sink + Result -> persist or cleanup",
+    "helper": "run_compress_orchestration<F: FnOnce(&CompressionConfig) -> Result<()>>(base_config, explicit_memory, explicit_temp_limit, input: InputFacts, probe: &dyn HostProbe, quiet, transaction) -> Result<()>",
+    "helper_owns": [
+      "nothing but control flow and diagnostics"
+    ],
+    "lower_level_allowed": "compress_into for production internals only; tests must not fake Resolved to assert control flow",
+    "pipeline_order": [
+      "resolve (may Err; transaction untouched)",
+      "apply budgets to cloned config",
+      "validate (may Err; transaction untouched)",
+      "emit diagnostics",
+      "transaction(&config) owns sink + publish"
+    ],
+    "pre_open_checks_order": [
+      "parse + positional + force/stdout",
+      "file->file collision + existing-output checks",
+      "single open+classify input (may block on FIFO)",
+      "run_compress_orchestration"
+    ],
+    "production_transaction": "move |config| if output=='-' { compress_stream_with(config, quiet, reader, stdout) } else { write_archive(path, force, reader, config) }",
+    "test_double": "counting transaction closure records open/publish; production uses real write_archive/compress_stream_with",
+    "transaction_owns": [
+      "reader",
+      "destination path",
+      "force",
+      "BudgetedWriter<NamedTempFile> sink"
+    ]
+  },
+  "ownership": {
+    "CLI": "CLI injector: main.rs explicit flags, pre-open checks, single-open input, orchestration helper + HostProbe/transaction closure, diagnostics, help text, binary-private orchestration tests",
+    "dependencies": "deps/metadata: Cargo.toml, Cargo.lock, THIRD_PARTY.*; audits",
+    "harness": "subprocess/harness: tests/auto_resources.rs, CLI additions, fidelity.py and large-file-roundtrip.py corrections",
+    "parent": "version transition and native release after 0.2.1 publication",
+    "platform": "platform tests: src/platform/** parsers/collector/resolver + fixtures"
+  },
+  "path_checks": {
+    "bounded": "cap read sizes; oversized -> malformed/indeterminate",
+    "escape": "canonicalized joined path must remain under the cgroup mount point",
+    "traversal": "reject any .. component",
+    "trust": "cgroup files kernel/trusted; parser fixture-tested against traversal/symlink/missing/oversized/escaped-mount",
+    "under_root": "path must start with mount root or be root-relative"
+  },
+  "prior_fixes_retained": {
+    "R1": "overflow -> InvalidConfig naming --temp-limit before any staging; cgroup 0 valid constraint; physical failure + known hard -> min(256MiB, hard/2); no false SREP_E_MEMORY guarantee",
+    "R2_A_no_root_heuristics": "HardProbe={identified,known_min,indeterminate}; visible levels only; missing expected file -> indeterminate -> conservative fallback; finite v1 does not clear uncertain v2; all-visible-max -> physical/2 with no hidden-ancestor promise",
+    "R2_C_per_resource_warnings": "explicit --temp-limit does not suppress automatic memory fallback warning; explicit --memory emits no memory warning even when temp auto"
+  },
+  "r3_fix": {
+    "borrowed_sink": "compress_into(input, config, &mut sink) borrows &mut; the borrow ends before finish_temporary, which owns the sink AND the operation Result and then persists or performs the existing cleanup",
+    "closures_ownership_descriptor": "transaction: FnOnce(&CompressionConfig) -> Result<()>; captures reader + destination path + force by move; owns the BudgetedWriter<NamedTempFile> sink for its whole lifetime; the helper holds no sink and passes &CompressionConfig only; on resolve/validate failure the closure is dropped uncalled (nothing opened)",
+    "finding": "StagingFactory.publish owned the Sink but compress_into(sink: W) consumed it and returned Result<()>, so the helper could not publish afterward and never actually published",
+    "no_atomic_publish_redesign": true,
+    "no_separate_force": "force lives in the transaction closure (production write_archive argument); the helper has no force parameter",
+    "removed": "StagingFactory trait and publish(sink, force) abstraction",
+    "resolution": "orchestration helper owns ONLY resolve->apply->validate->diagnostics; a transaction closure owns the reader, sink and force and runs the existing temporary_output + finish_temporary_transaction publish path unchanged",
+    "tests": {
+      "compress_failure": "open 1, publish 0 (cleanup only, not an actual publish)",
+      "publish_failure": "open 1, publish 0, Err propagates, destination preserved + cleanup",
+      "resolve_or_validate_failure": "open 0, publish 0",
+      "success": "open 1, publish 1"
+    }
+  },
+  "resolution_pseudocode": {
+    "hard_identified": "if indeterminate -> min(256MiB, known/2?, physical/2?) fallback + warning; elif known_min Some(h) -> physical Known? min(p,h)/2 : min(256MiB,h/2)+warning; else (all visible max) -> physical Known? p/2 : 256MiB+warning",
+    "no_hard_identified": "physical Known(p)->p/2 auto; else 256MiB fallback + warning",
+    "zero_result": "validate() -> SREP_E_INVALID_CONFIG"
+  },
+  "revision": "5 ([redacted internal task] single MED: closure-based transaction ownership; supersedes rev1-4)",
+  "schema": "srep-030-design-evidence-v5",
+  "source_repository": {
+    "access": "read-only",
+    "forbid_unsafe": true,
+    "head": "1777d4728113e997af32f2d7a9c553de3b0b06a9",
+    "manifest_package_version": "0.2.0",
+    "manifest_version_note": "accepted tree at 1777d47 is post-0.2.0 work but Cargo.toml is still 0.2.0 (tests/release_cli.rs:85 asserts CARGO_PKG_VERSION == 0.2.0); NOT a literal 0.2.1 manifest",
+    "note": "original dirty worktree <workspace>/original-checkout NOT read or touched",
+    "path": "<workspace>/post-v0.2.0",
+    "pinned_rust_version": "1.88.0",
+    "working_tree_clean": true
+  },
+  "tests": {
+    "CLI_orchestration": [
+      "overflow -> open 0 publish 0 + names --temp-limit",
+      "explicit temp + huge length -> open 1 publish 1",
+      "zero auto budget -> validate Err -> open 0 publish 0",
+      "explicit memory -> panicking probe not called, open 1 publish 1",
+      "compress failure -> open 1 publish 0 (cleanup only)",
+      "publish failure -> open 1 publish 0 Err propagates dest preserved",
+      "fallback quiet warning bytes == resolved",
+      "mixed origins explicit+auto"
+    ],
+    "harness_subprocess_harness": [
+      "ordinary file/stdin/FIFO/explicit override",
+      "stdin redirected regular still unknown 32",
+      "stderr resources line round trip",
+      "failure preserves destination and leaves no staging",
+      "fidelity.py and large-file-roundtrip.py explicit fixed or bind actual resolved",
+      "no quality-metric/reference-corpus change"
+    ],
+    "no_backdoor": "injection via HostProbe, InputFacts, transaction closure; no env vars; no multi-EiB filesystem fixtures",
+    "platform_fixtures": "collector_fixtures + resolution table + warning bytes consistency"
+  },
+  "verification": {
+    "compile_hint_only": [
+      "cargo check --target x86_64-pc-windows-gnu"
+    ],
+    "hard_stop": "no Windows/macOS claim from local Linux; 1.88.0 compile verified in Actions",
+    "local_linux_allowed": [
+      "cargo fmt --all -- --check",
+      "cargo check --all-targets --all-features",
+      "cargo clippy --all-targets --all-features -- -D warnings",
+      "cargo test --bin srep",
+      "targeted tests/auto_resources.rs"
+    ],
+    "native_required": "GitHub Actions native-release.yml 6 jobs (ubuntu/windows/macos x 1.88.0/stable) + package smokes; parent-authorized new 0.3.0 branch after 0.2.1 publication"
+  },
+  "writes": {
+    "allowed": [
+      "<evidence>/v0.3.0/design/proposal.md",
+      "<evidence>/v0.3.0/design/evidence.json"
+    ],
+    "git_changes": false,
+    "repo_writes": false
+  }
+}

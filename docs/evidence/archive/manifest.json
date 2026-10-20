@@ -1,0 +1,238 @@
+{
+  "archive_date": "2026-10-20",
+  "base_commit": "161719b40258c8ccd4222869ad53b97dbb7b5693",
+  "document_count": 19,
+  "files": [
+    {
+      "original_bytes": 23892,
+      "original_provenance": "v0.3.0/design/proposal.md",
+      "original_sha256": "7837fdac1ea4d5f8bc42165597dc65ff17db6c440dffa28807b41b291968b458",
+      "path": "v0.3.0/resource-defaults-rev5.md",
+      "redaction_count": 22,
+      "redactions": {
+        "host_path_prefix": 1,
+        "task_identifier": 2,
+        "worker_role_label": 19
+      },
+      "sanitized_bytes": 24322,
+      "sanitized_sha256": "e08a4e1e68010080496493fdf8e965eabf309a369b70e249fd530265f715573a"
+    },
+    {
+      "original_bytes": 15212,
+      "original_provenance": "v0.3.0/design/evidence.json",
+      "original_sha256": "2fa27b7967dab1dbf8e4102f86f58e8f2b9ea461ba918d845ab63a375259097e",
+      "path": "v0.3.0/resource-defaults-rev5-evidence.json",
+      "redaction_count": 13,
+      "redactions": {
+        "host_path_prefix": 4,
+        "task_identifier": 2,
+        "worker_role_label": 7
+      },
+      "sanitized_bytes": 16303,
+      "sanitized_sha256": "7141b85eb590e46d5148b728f98f31763cdbe48c61fb925bcec907a560edc536"
+    },
+    {
+      "original_bytes": 8082,
+      "original_provenance": "v0.3.0/final-main/final-receipt.json",
+      "original_sha256": "90cb20d232728f6478aa6e5a0fe3fd57346e54af1c6de3213dac2be8b78ee450",
+      "path": "v0.3.0/final-main-receipt.json",
+      "redaction_count": 7,
+      "redactions": {
+        "host_path_prefix": 6,
+        "model_reviewer_session_metadata": 1
+      },
+      "sanitized_bytes": 8285,
+      "sanitized_sha256": "f9051ea73b61f075eadf33bfddfa78f491b6047cf0c8b4d8be39b76ec2545264"
+    },
+    {
+      "original_bytes": 3031,
+      "original_provenance": "v0.3.0/final-main/final-receipt.md",
+      "original_sha256": "3473249094f60b1c698423368060b63d88ef422399cc450a192e397d7b09ae0c",
+      "path": "v0.3.0/final-main-receipt.md",
+      "redaction_count": 1,
+      "redactions": {
+        "model_reviewer_session_metadata": 1
+      },
+      "sanitized_bytes": 3269,
+      "sanitized_sha256": "2064684e943225394a22096de8f35069b14bea0d3af465002a8884bb84dae5fe"
+    },
+    {
+      "original_bytes": 6427,
+      "original_provenance": "v0.3.0/actual-package/large258-fixed/report.json",
+      "original_sha256": "11acfe2fbaf83897595ca651aab2c87ff33141368a7e5b1d24d7570baf199e5c",
+      "path": "v0.3.0/large258-fixed-report.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 6744,
+      "sanitized_sha256": "118d8a7711c7163258b11a7fbbc962af7f1a2a78b674f2948269bdc3b5c8c25c"
+    },
+    {
+      "original_bytes": 2377,
+      "original_provenance": "v0.3.0/actual-package/sparse07-fresh/status.json",
+      "original_sha256": "80668218aeb1f3afa1be04faf463ee6a111a9d739dc3ad5eb19610db346e13fb",
+      "path": "v0.3.0/sparse07-fresh-status.json",
+      "redaction_count": 1,
+      "redactions": {
+        "process_identifier": 1
+      },
+      "sanitized_bytes": 2723,
+      "sanitized_sha256": "7aceff48abbfaa86ccb93e897ef5e6bfe2c89995cab0c634912e1f9724e6672a"
+    },
+    {
+      "original_bytes": 377,
+      "original_provenance": "v0.3.0/publication/021-promotion-observation.json",
+      "original_sha256": "45512af1f6b0563d4ca4c28c22b896a803610e86afacd19656f8114146d67ead",
+      "path": "v0.3.0/v0.2.1-promotion-observation.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 694,
+      "sanitized_sha256": "10e6289d2a5daab68557e1b86bced614a6c792a505978e8a7d4c0d0ebf1c225a"
+    },
+    {
+      "original_bytes": 300,
+      "original_provenance": "v0.3.0/publication/030-create-observation.json",
+      "original_sha256": "e7de4b0e357bd983d32b9cccac60d738a991c6708ac45be3cd6d7a956fd9e40b",
+      "path": "v0.3.0/draft-create-observation.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 617,
+      "sanitized_sha256": "03a84a270ba026ba3a351221e852a966cfabdf0644e1450e9d10a2b19b9d6f1b"
+    },
+    {
+      "original_bytes": 249,
+      "original_provenance": "v0.3.0/publication/030-publish-command.json",
+      "original_sha256": "a3b8016d02f2c74ec16d4e734746a1f317f418bcaafbaea2f976511b31c779cf",
+      "path": "v0.3.0/publish-command.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 566,
+      "sanitized_sha256": "408e673e9b98a4091cda1d55bc0460e7b02ebcfcf706464ced69b71fa309ee7a"
+    },
+    {
+      "original_bytes": 977,
+      "original_provenance": "v0.3.0/publication/check-draft-20261017/receipt.json",
+      "original_sha256": "4665ad7c1b7bc5745214907d89a20fcf044573f54cea424bcf12ba6a7fd5ec6e",
+      "path": "v0.3.0/draft-check-receipt.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 1294,
+      "sanitized_sha256": "0618aed0ea0dc997408b8e4689eadedb0c5a6e7bc364443bdb9350a7a91dfbcb"
+    },
+    {
+      "original_bytes": 1000,
+      "original_provenance": "v0.3.0/publication/check-published-20261017/receipt.json",
+      "original_sha256": "bf81cffe074f9428375afee315dff0aaea4217358fa378d96f727e0dc1a39544",
+      "path": "v0.3.0/published-check-receipt.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 1317,
+      "sanitized_sha256": "ca49256072e5e7e33b69240860e5af788a3df477a6b750080a21725881554c1d"
+    },
+    {
+      "original_bytes": 970,
+      "original_provenance": "v0.1.1/publication/COMPLETE.json",
+      "original_sha256": "1921c27d7b01fd74e7ad888a22b8fb08126e7146c9ed49eb5d9f1cb444cee123",
+      "path": "v0.1.1/publication-complete.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 1287,
+      "sanitized_sha256": "9aea90570d3d856ec083156163aa2cc3b52d35f753b5407016133e73d64f6a01"
+    },
+    {
+      "original_bytes": 2478,
+      "original_provenance": "v0.1.1/publication/public-verification.json",
+      "original_sha256": "74cb180dd8b520300c84160a36b825c53120cd2930e4188a00d9dbf520ef03d2",
+      "path": "v0.1.1/public-verification.json",
+      "redaction_count": 0,
+      "redactions": {},
+      "sanitized_bytes": 2795,
+      "sanitized_sha256": "7059128a7da86008a77ac2031abac672f48e727408747667497bb7fbefdd5f70"
+    },
+    {
+      "original_bytes": 11129,
+      "original_provenance": "v0.2.0/publication/publication-receipt.json",
+      "original_sha256": "4926c411fcf900dd6412b2ffbc8a937088015d9f0b76d079613d71505b1ee2a2",
+      "path": "v0.2.0/publication-receipt.json",
+      "redaction_count": 15,
+      "redactions": {
+        "host_path_prefix": 6,
+        "personal_attribution": 7,
+        "producer_or_task_metadata": 2
+      },
+      "sanitized_bytes": 12292,
+      "sanitized_sha256": "98257b4abd98c89b5d10775093960e59ecf48f111c8812d05be40c904054b310"
+    },
+    {
+      "original_bytes": 7741,
+      "original_provenance": "v0.2.1/publication/publication-receipt.json",
+      "original_sha256": "85f32d1269e7afc479e2c73da8fe539e846033ad6a62b29053a2575a4b8e6d13",
+      "path": "v0.2.1/original-prerelease-receipt.json",
+      "redaction_count": 3,
+      "redactions": {
+        "host_path_prefix": 1,
+        "producer_or_task_metadata": 2
+      },
+      "sanitized_bytes": 8090,
+      "sanitized_sha256": "6a87bc50e85ba7ed1e29c480766e8ccf93d5ef80825fe6df3a4ded864a3e2691"
+    },
+    {
+      "original_bytes": 11226,
+      "original_provenance": "post-v0.2.0/linux-verification/status.json",
+      "original_sha256": "ea26cbd856a7ce444f3ba370075c13d36c78fac7997a6458a53a495549e8807e",
+      "path": "post-v0.2.0/linux-verification-status.json",
+      "redaction_count": 26,
+      "redactions": {
+        "host_path_prefix": 26
+      },
+      "sanitized_bytes": 11740,
+      "sanitized_sha256": "89d87244a56bd6cc013cf89a1c50a1719e4ec05c3da8807466040ede5568b1c7"
+    },
+    {
+      "original_bytes": 3387,
+      "original_provenance": "post-v0.2.0/linux-verification/verification-summary.md",
+      "original_sha256": "d5318c3a3c80878455099f8e6022713f2e24fb57b10db7cddd6f317e33436ce7",
+      "path": "post-v0.2.0/linux-verification-summary.md",
+      "redaction_count": 6,
+      "redactions": {
+        "environment_value": 2,
+        "host_path_prefix": 2,
+        "process_identifier": 1,
+        "task_identifier": 1
+      },
+      "sanitized_bytes": 3809,
+      "sanitized_sha256": "f891fbf21a6ade9fb8eb4149160aebf8a2df25ae867b035589407229f7aa9745"
+    },
+    {
+      "original_bytes": 12018,
+      "original_provenance": "post-v0.2.0/native/verification-receipt.json",
+      "original_sha256": "1440e05c33cfc5a14f1d2b6459759f1958bc03565ba90c96ded394e0e066a019",
+      "path": "post-v0.2.0/native-verification-receipt.json",
+      "redaction_count": 2,
+      "redactions": {
+        "producer_or_task_metadata": 1,
+        "task_identifier": 1
+      },
+      "sanitized_bytes": 14414,
+      "sanitized_sha256": "06266d194ba7b7691e3b7369ea86261f3871db85922a39fdf8c11f132f9d93d6"
+    },
+    {
+      "original_bytes": 7143,
+      "original_provenance": "post-v0.2.0/native/final-main/final-verification-receipt.json",
+      "original_sha256": "4404037ba33be0836673e1ea062a9fa2ccd6b1061c471b97daae7ea9bce1ae0c",
+      "path": "post-v0.2.0/final-main-verification-receipt.json",
+      "redaction_count": 6,
+      "redactions": {
+        "host_path_prefix": 2,
+        "producer_or_task_metadata": 1,
+        "session_identifier": 1,
+        "task_identifier": 2
+      },
+      "sanitized_bytes": 8660,
+      "sanitized_sha256": "75ae251f1e89800bc76fcc6557d6ea7c64363fb11df353a9447744349d852211"
+    }
+  ],
+  "hash_semantics": "Original hashes identify read-only source bytes; sanitized hashes identify public derivatives. Embedded evidence hashes are unchanged original references.",
+  "redaction_count_semantics": "Counts are replacement occurrences; a whole metadata-field replacement counts once, including any nested identifiers. Zero-redaction files still receive an archive notice and JSON canonical formatting.",
+  "schema": "srep-sanitized-evidence-archive/v1",
+  "serialization": "UTF-8; JSON sorted keys, two-space indentation, LF and final newline (not RFC 8785). Markdown source body preserved except declared redactions and added archive notice."
+}
